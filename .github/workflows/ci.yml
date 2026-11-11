@@ -46,6 +46,35 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: mise run test:browser
 
+  # Builds the image with no publishing rights, checks it as it will run and scans it with Trivy
+  # (mise run image), and keeps it for the release job, which publishes this exact build.
+  image:
+    name: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - run: mise run image
+      - run: |
+          podman tag "localhost/atrium:$(git rev-parse --short HEAD)" localhost/atrium:release
+          podman save --format oci-archive --output image.tar localhost/atrium:release
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: image
+          path: image.tar
+          retention-days: 1
+          if-no-files-found: error
+
   # The one required check. A job skipped because a need failed would count as passed, so
   # this one always runs and passes only when both did.
   gate:
@@ -62,3 +91,16 @@ jobs:
         run: |
           echo "checks: $CHECKS, browser: $BROWSER"
           [ "$CHECKS" = success ] && [ "$BROWSER" = success ]
+
+  # A push to main deploys once the gate passed on that commit: release.yml publishes the image
+  # and the signed manifests that Flux on Apollo follows.
+  release:
+    name: release
+    needs: [gate, image]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read # check out the commit and read main's head
+      packages: write # push the image and the manifests artifact
+      id-token: write # sign keyless as this workflow
+    # actionlint 1.7.12 rejects the $/ form zizmor suggests.
+    uses: ./.github/workflows/release.yml # zizmor: ignore[self-repository]

@@ -41,6 +41,14 @@ A feature implements `atrium_core::Feature`: an id, a name, its routes, and opti
 
 `docs/decisions.md` records the choices that were not obvious.
 
+## Deploy
+
+A push to `main` deploys Atrium to Apollo once the gate passes on that commit. CI's release job pushes the image built by the `image` job to `ghcr.io/notes-supply/atrium` by digest, and `tools/release.sh` packs `deploy/` with that digest as one OCI artifact, signs it keyless as `.github/workflows/release.yml` on `main`, and points its `main` tag at it. Flux on Apollo verifies that signature and applies `deploy/` in namespace `atrium`. `deploy/` holds only what a release may change: two pods spread over nodes, rolled one at a time, and their disruption budget. The cluster repository owns the Services, Ingress, network policy and secrets.
+
+Roll back a bad release with a revert commit on `main`; it deploys the same way.
+A release whose pods never get ready leaves the old pods serving, and Flux applies the revert once that release's 5-minute health check has timed out.
+Never retag the artifact by hand: Flux accepts only what the release workflow signed on `main`.
+
 ## Check it
 
 ```sh

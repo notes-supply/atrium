@@ -74,3 +74,11 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 - **Home waits 500 ms** for its tiles, all fetched at once. A tile that misses it is a quiet "briefly away" tile and its clause leaves the sentence; when nothing answers, home takes the away look and still answers 200.
 - **Lists page as the design shows them:** 16 pages, 10 events of a history, five days of changes.
 - **The demo is the same code.** `atrium --demo` starts a stand-in for Mneme in the process, filled with the prototype's content in Mneme's shapes, and holds the clock at the prototype's 09:41. Its week is computed from its own changes, so it is sparser than the prototype's random one.
+
+## Deployment
+
+- **Flux on Apollo verifies cosign's classic `.sig` signature, so the release signs in that format.** Flux 2.8.2 found no signature in cosign 3.1.4's default bundle format, which a registry without the referrers API, GHCR among them, stores under a `sha256-<digest>` tag, and it verified the same artifact signed with `--new-bundle-format=false`. Shown on kind with a key; keyless signing is proven only once `release.yml` has run on GitHub.
+- **The Services live in the cluster repository.** A release that may write a Service can claim an external IP on every node or ask the Tailscale operator for a new tailnet host, which changes the network beyond the namespace. The deployer may write only Deployments, StatefulSets, ConfigMaps and PodDisruptionBudgets, and read ReplicaSets and pods, which Flux's health check needs.
+- **`release.yml` is a reusable workflow that CI calls after the gate.** The keyless identity Apollo verifies is that one file on `refs/heads/main`. The `image` job builds and checks the image with no publishing rights, and the release job pushes that exact archive.
+- **A rerun of an older run publishes nothing.** The release job stops unless its commit is still `main`'s head, so only the newest commit can move the `main` tag. Runs on `main` are already serialised by the workflow's concurrency group, and the release job has its own.
+- **Each release spreads its own pods** (`matchLabelKeys: [pod-template-hash]`). Counting the old ReplicaSet's pods mid-rollout put both new pods on one node in the kind rehearsal.
