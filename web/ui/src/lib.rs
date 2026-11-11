@@ -13,6 +13,7 @@ mod keys;
 mod light;
 mod palette;
 mod prefs;
+mod preview;
 mod resume;
 mod toc;
 
@@ -40,6 +41,7 @@ const MODULES: &[(&str, Mount)] = &[
         Ok(())
     }),
     ("palette", palette::mount),
+    ("preview", preview::mount),
     ("prefs", |element| {
         prefs::mount(element);
         Ok(())

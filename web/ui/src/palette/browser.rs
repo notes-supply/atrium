@@ -471,7 +471,7 @@ fn load_pages() {
     }) else {
         return;
     };
-    dom::fetch(&url, |list| {
+    dom::fetch(&url, web_sys::Response::json, |list| {
         let pages: Vec<Item> = Array::from(&list)
             .iter()
             .map(|page| {

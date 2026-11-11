@@ -92,14 +92,19 @@ extern "C" {
     fn then(this: &Thenable, ok: &JsValue, failed: &JsValue) -> Thenable;
 }
 
-/// Fetches `url` and calls `done` with its body parsed as JSON, unless the request fails or
-/// answers an error. A failure is quiet: the page keeps what the server wrote.
-pub fn fetch(url: &str, done: impl FnOnce(JsValue) + 'static) {
+/// Fetches `url` and calls `done` with its body as `read` takes it, `Response::json` or
+/// `Response::text`, unless the request fails or answers an error. A failure is quiet: the
+/// page keeps what the server wrote.
+pub fn fetch(
+    url: &str,
+    read: fn(&web_sys::Response) -> Result<js_sys::Promise, JsValue>,
+    done: impl FnOnce(JsValue) + 'static,
+) {
     let Some(window) = web_sys::window() else {
         return;
     };
     let read = Closure::once_into_js(move |response: web_sys::Response| -> JsValue {
-        match response.json() {
+        match read(&response) {
             Ok(promise) if response.ok() => promise.into(),
             _ => JsValue::UNDEFINED,
         }
