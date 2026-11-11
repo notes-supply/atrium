@@ -45,6 +45,13 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: mise run test:browser
+      # The trace of each failed test, and the servers' logs.
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser
+          path: target/browser
+          retention-days: 14
 
   # The one required check. A job skipped because a need failed would count as passed, so
   # this one always runs and passes only when both did.

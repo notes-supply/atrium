@@ -19,6 +19,8 @@ export default {
     baseURL: process.env.ATRIUM_URL,
     viewport: { width: 1440, height: 900 },
     launchOptions: { args: SWIFTSHADER },
+    // CI uploads target/browser when the job fails.
+    trace: process.env.CI ? 'retain-on-failure' : 'off',
   },
   projects: [
     { name: 'field', testMatch: WITH_FIELD },
