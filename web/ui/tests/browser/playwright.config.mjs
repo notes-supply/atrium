@@ -23,7 +23,9 @@ export default {
     trace: process.env.CI ? 'retain-on-failure' : 'off',
   },
   projects: [
-    { name: 'field', testMatch: WITH_FIELD },
+    // On GitHub's runner a page rendering in SwiftShader can stall for more than 5 s, as
+    // one did after a resize at twice the pixel density.
+    { name: 'field', testMatch: WITH_FIELD, expect: { timeout: process.env.CI ? 15_000 : 5_000 } },
     // Rendering the field in software takes the CPU that a slow machine's page needs for
     // everything else, so the other modules run without WebGL, with the CSS lattice a
     // browser without it gets.
