@@ -72,6 +72,40 @@ run = "cargo deny --locked {% if env.MISE_OFFLINE %}--offline {% endif %}check a
 description = "Lint the CI workflow"
 run = ["actionlint", "zizmor --offline .github/workflows"]
 
+[tasks.image]
+description = "Build the image as localhost/atrium:<commit>, answer one request with it, and scan it with Trivy when Trivy is installed"
+depends = ["build:wasm"]
+run = """{% raw %}
+set -euo pipefail
+tag="localhost/atrium:$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- || echo -dirty)"
+podman build --file Containerfile --tag "$tag" .
+podman image inspect "$tag" --format 'user={{.Config.User}} size={{.Size}}'
+if podman run --rm --entrypoint /bin/sh "$tag" -c true 2>/dev/null; then
+  echo "the image has a shell" >&2
+  exit 1
+fi
+name="atrium-smoke-$$"
+podman run --detach --name "$name" --read-only --publish 127.0.0.1::8080 "$tag" \
+  --viewer tailnet --allowed-hosts localhost --mneme-url http://127.0.0.1:9 >/dev/null
+port="$(podman port "$name" 8080 | cut -d: -f2)"
+for _ in $(seq 50); do curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && break; sleep 0.1; done
+curl -fsS -o /dev/null -w 'home answered %{http_code}\n' -H 'Host: localhost' "http://127.0.0.1:$port/"
+podman stop --time 10 "$name" >/dev/null
+code="$(podman inspect "$name" --format '{{.State.ExitCode}}')"
+podman rm "$name" >/dev/null
+[ "$code" = 0 ] || { echo "exited $code on SIGTERM" >&2; exit 1; }
+echo "exited 0 on SIGTERM"
+if command -v trivy >/dev/null; then
+  scratch="$(mktemp -d)"
+  trap 'rm -rf "$scratch"' EXIT
+  podman save --quiet --format docker-archive --output "$scratch/atrium.tar" "$tag"
+  trivy image --quiet --input "$scratch/atrium.tar" --severity HIGH,CRITICAL --exit-code 1
+else
+  echo "trivy is not installed: the image was not scanned"
+fi
+echo "$tag"
+{% endraw %}"""
+
 [tasks.gate]
 description = "Everything that proves the repository is good"
 depends = ["check:fmt", "check:clippy", "check:test", "check:advisories", "check:workflows"]

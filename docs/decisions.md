@@ -43,3 +43,9 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 - **The palette sits in every page's footer, where the commands are plain links,** so every page that has commands loads the loader. A page without commands, such as any page for an anonymous viewer today, has no script. The loader starts each module once from its element's `data-glue` and `data-wasm`.
 - **Command keys such as `g w` are real:** typed outside a field, one after the other within 1.5 seconds, they follow the command.
 - **The palette was not driven in a browser.** Headless Chromium does not start on the build machine. The module and glue instantiate under Bun and run up to the missing `window`; the markup, headers and asset types are tested.
+
+## The image
+
+- **The image builds the server with Rust 1.99.1 stable** in `rust:1.99.1-alpine3.24`, not the gate's pinned nightly. The build was to fetch only crates and base images, and installing the nightly in the builder needs rustup's own servers. Nothing in the server needs nightly. The Wasm module is built by the pinned nightly on the host and copied in, so it is the same file either way.
+- **The runtime is `distroless/static-debian13:nonroot`,** both bases pinned by digest. Debian 13 is the newest distroless static.
+- **`mise run image` also runs the image:** read-only, it answers `/healthz` and home, and exits 0 on SIGTERM. It then fails on any High or Critical finding from Trivy when Trivy is installed. Trivy reads the image's Debian packages; the Rust dependencies are checked by `cargo deny` in the gate, since the binary carries no `cargo auditable` record.
