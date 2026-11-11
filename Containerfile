@@ -1,5 +1,5 @@
 # A static musl binary on distroless: no shell or package manager, and non-root (UID 65532).
-# The palette's Wasm comes from `mise run build:wasm` on the host, which `mise run image` runs
+# The Wasm bundles come from `mise run build:wasm` on the host, which `mise run image` runs
 # first: it needs the pinned nightly and its wasm32 target, and a .wasm is the same file
 # wherever it is built.
 FROM docker.io/library/rust:1.99.1-alpine3.24@sha256:44819b27be4c97b0e4d7203bd2e02c4820f97700211b6a37fb4c246a2de59383 AS build

@@ -95,7 +95,7 @@ description = "Lint the CI workflow"
 run = ["actionlint", "zizmor --offline .github/workflows"]
 
 [tasks.image]
-description = "Build the image as localhost/atrium:<commit>, answer one request with it, and scan it with Trivy when Trivy is installed"
+description = "Build the image as localhost/atrium:<commit>, answer home and serve the bundles with it, and scan it with Trivy when Trivy is installed"
 depends = ["build:wasm"]
 run = """{% raw %}
 set -eu
@@ -113,6 +113,12 @@ port="$(podman port "$name" 8080)"
 port="${port##*:}"
 for _ in $(seq 50); do curl -fsS "http://127.0.0.1:$port/healthz" >/dev/null 2>&1 && break; sleep 0.1; done
 curl -fsS -o /dev/null -w 'home answered %{http_code}\n' -H 'Host: localhost' "http://127.0.0.1:$port/"
+script="$(curl -fsS -H 'Host: localhost' "http://127.0.0.1:$port/" | grep -o '<script[^>]*>')"
+for attr in src data-ui data-ui-wasm data-field data-field-wasm; do
+  url="$(printf '%s' "$script" | tr ' >' '\\n\\n' | grep "^$attr=" | cut -d= -f2 | tr -d '"')"
+  curl -fsS -o /dev/null -w "$attr %{http_code} %{content_type} %{size_download} bytes\\n" \
+    -H 'Host: localhost' "http://127.0.0.1:$port$url"
+done
 podman stop --time 10 "$name" >/dev/null
 code="$(podman inspect "$name" --format '{{.State.ExitCode}}')"
 podman rm "$name" >/dev/null
