@@ -144,13 +144,13 @@ test('perf: ?perf shows the readout, and nothing shows without it', async ({ pag
   await expect(readout).toContainText(/^gpu {2}(no timer query|\d+\.\d\d ms)$/m, { timeout: 20_000 });
 });
 
-// The springs ease at most 50 ms a frame, so after a hundred frames asked (with ?perf, the
-// readout asks for some) the lattice has had at least the 800 ms it needs to gather under
-// the open palette, more than twice as dense as across the whole canvas.
+// Once the field has drawn a few frames with the palette open (with ?perf, the readout
+// asks for some of the frames counted), the lattice gathers under it, more than twice as
+// dense as across the whole canvas.
 async function pulled(page) {
   const palette = await page.locator('dialog.palette').boundingBox();
   const box = [Math.round(palette.x), Math.round(palette.y), Math.round(palette.width), Math.round(palette.height)];
-  await keepsAsking(page, 100);
+  await keepsAsking(page, 20);
   const [whole, under] = await sample(page, [box]);
   expect(under.dots, 'denser under the palette').toBeGreaterThan(whole.dots * 2);
 }
