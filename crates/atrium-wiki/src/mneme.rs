@@ -275,6 +275,26 @@ pub struct Machines {
     pub machines: Vec<Machine>,
 }
 
+/// A file a machine keeps out of every save, and why.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Skipped {
+    #[serde(alias = "file")]
+    pub path: String,
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// A field Mneme is still adding: read when it has the expected shape, `None` otherwise, so a
+/// change on Mneme's side never breaks a page.
+fn lenient<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(serde_json::from_value(value).ok())
+}
+
 /// What a machine's autosave service last did and said. Every field but `name` and `current`
 /// is `None` until the machine has done that.
 #[derive(Debug, Deserialize)]
@@ -295,6 +315,37 @@ pub struct Machine {
     /// Whether its reported head is the server's.
     #[serde(default)]
     pub current: bool,
+    /// Files it keeps out of every save, the first of them.
+    #[serde(default, deserialize_with = "lenient")]
+    pub skipped: Option<Vec<Skipped>>,
+    /// How many more it keeps out than `skipped` lists.
+    #[serde(default, deserialize_with = "lenient")]
+    pub skipped_more: Option<u64>,
+}
+
+/// The questions the wiki leaves for its owner: the items under a heading named "Open
+/// questions" on any page.
+#[derive(Debug, Deserialize)]
+pub struct Questions {
+    pub total: u64,
+    pub questions: Vec<Question>,
+}
+
+/// One open question.
+#[derive(Debug, Deserialize)]
+pub struct Question {
+    pub page: QuestionPage,
+    pub text: String,
+    /// When its page last changed.
+    pub updated: i64,
+}
+
+/// The page a question is on.
+#[derive(Debug, Deserialize)]
+pub struct QuestionPage {
+    pub id: PageId,
+    pub path: String,
+    pub title: String,
 }
 
 /// What a listing of pages is sorted by.
@@ -392,7 +443,38 @@ impl FromStr for Order {
     }
 }
 
-/// How a listing is sorted and which part of it to show.
+/// Which pages a listing or search keeps.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Filters {
+    /// Include deleted pages.
+    pub deleted: bool,
+    pub changed_within_days: Option<u32>,
+    pub created_within_days: Option<u32>,
+    pub min_versions: Option<u64>,
+    pub max_versions: Option<u64>,
+    pub min_words: Option<u64>,
+    pub max_words: Option<u64>,
+}
+
+impl Filters {
+    /// How many filters narrow the pages.
+    #[must_use]
+    pub fn count(&self) -> usize {
+        [
+            self.changed_within_days.map(u64::from),
+            self.created_within_days.map(u64::from),
+            self.min_versions,
+            self.max_versions,
+            self.min_words,
+            self.max_words,
+        ]
+        .iter()
+        .filter(|filter| filter.is_some())
+        .count()
+    }
+}
+
+/// How a listing is sorted, which pages it keeps and which part of it to show.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Listing {
     /// `None` for Mneme's default: title for pages, best match for a search.
@@ -400,6 +482,7 @@ pub struct Listing {
     pub order: Option<Order>,
     pub offset: u64,
     pub limit: u64,
+    pub filters: Filters,
 }
 
 impl Listing {
@@ -413,6 +496,28 @@ impl Listing {
         }
         if let Some(order) = self.order {
             query.push(("order", order.name().to_owned()));
+        }
+        let filters = self.filters;
+        if filters.deleted {
+            query.push(("deleted", "true".to_owned()));
+        }
+        for (name, value) in [
+            (
+                "changed_within_days",
+                filters.changed_within_days.map(u64::from),
+            ),
+            (
+                "created_within_days",
+                filters.created_within_days.map(u64::from),
+            ),
+            ("min_versions", filters.min_versions),
+            ("max_versions", filters.max_versions),
+            ("min_words", filters.min_words),
+            ("max_words", filters.max_words),
+        ] {
+            if let Some(value) = value {
+                query.push((name, value.to_string()));
+            }
         }
         query
     }
@@ -538,9 +643,13 @@ impl Mneme {
         id: &PageId,
         offset: u64,
         limit: u64,
+        since: Option<i64>,
     ) -> Result<Events, MnemeError> {
-        let query = [("offset", offset.to_string()), ("limit", limit.to_string())];
-        self.get(&format!("pages/{id}/versions"), &query).await
+        self.get(
+            &format!("pages/{id}/versions"),
+            &paged(offset, limit, since),
+        )
+        .await
     }
 
     /// A page's text at a commit.
@@ -577,28 +686,37 @@ impl Mneme {
     /// # Errors
     ///
     /// Any [`MnemeError`].
-    pub async fn changes(&self, offset: u64, limit: u64) -> Result<Events, MnemeError> {
-        let query = [("offset", offset.to_string()), ("limit", limit.to_string())];
-        self.get("changes", &query).await
+    pub async fn changes(
+        &self,
+        offset: u64,
+        limit: u64,
+        since: Option<i64>,
+    ) -> Result<Events, MnemeError> {
+        self.get("changes", &paged(offset, limit, since)).await
     }
 
-    /// Pages that match `words`, changed within `days` if given.
+    /// Pages that match `words`, sorted and filtered as `listing` says.
     ///
     /// # Errors
     ///
     /// [`MnemeError::Refused`] for a search Mneme cannot read, or any other [`MnemeError`].
-    pub async fn search(
-        &self,
-        words: &str,
-        days: Option<u32>,
-        listing: Listing,
-    ) -> Result<Hits, MnemeError> {
+    pub async fn search(&self, words: &str, listing: Listing) -> Result<Hits, MnemeError> {
         let mut query = listing.query();
         query.push(("q", words.to_owned()));
-        if let Some(days) = days {
-            query.push(("changed_within_days", days.to_string()));
-        }
         self.get("search", &query).await
+    }
+
+    /// The open questions, or `None` from a Mneme that does not list them yet.
+    ///
+    /// # Errors
+    ///
+    /// Any [`MnemeError`] but [`MnemeError::NotFound`].
+    pub async fn questions(&self) -> Result<Option<Questions>, MnemeError> {
+        match self.get("questions", &[]).await {
+            Ok(questions) => Ok(Some(questions)),
+            Err(MnemeError::NotFound) => Ok(None),
+            Err(error) => Err(error),
+        }
     }
 
     /// The record as a whole, which the client also keeps as the newest it knows.
@@ -620,6 +738,14 @@ impl Mneme {
     pub async fn machines(&self) -> Result<Machines, MnemeError> {
         self.get("machines", &[]).await
     }
+}
+
+fn paged(offset: u64, limit: u64, since: Option<i64>) -> Vec<(&'static str, String)> {
+    let mut query = vec![("offset", offset.to_string()), ("limit", limit.to_string())];
+    if let Some(since) = since {
+        query.push(("since", since.to_string()));
+    }
+    query
 }
 
 #[derive(Deserialize)]
@@ -646,6 +772,7 @@ mod tests {
             order: None,
             offset: 0,
             limit: 50,
+            filters: Filters::default(),
         }
     }
 
@@ -666,7 +793,7 @@ mod tests {
             [Some(7), Some(30), Some(90), None]
         );
 
-        let versions = mneme.versions(&alpha, 0, 50).await.unwrap();
+        let versions = mneme.versions(&alpha, 0, 50, None).await.unwrap();
         assert_eq!(versions.events[1].kind, EventKind::Renamed);
         assert_eq!(versions.events[1].from.as_deref(), Some("alpha.md"));
 
@@ -678,16 +805,27 @@ mod tests {
         assert!(matches!(lines[0], DiffLine::Skipped(3)));
         assert!(matches!(&lines[4], DiffLine::Added(spans) if spans[0].text == "And a third."));
 
-        let changes = mneme.changes(0, 50).await.unwrap();
+        let changes = mneme.changes(0, 50, None).await.unwrap();
         assert_eq!(changes.total, 13);
         assert_eq!(changes.events[1].overlap.as_deref(), Some("aeolus"));
 
-        let hits = mneme.search("harbours", None, listing()).await.unwrap();
+        let hits = mneme.search("harbours", listing()).await.unwrap();
         assert_eq!(hits.hits[0].snippet[1].text, "harbours");
         assert!(hits.hits[0].snippet[1].hit);
 
         let machines = mneme.machines().await.unwrap();
         assert_eq!(machines.machines[1].state.as_deref(), Some("blocked"));
+        let skipped = machines.machines[1].skipped.as_deref().unwrap();
+        assert_eq!(skipped[0].path, "notes/scan.pdf");
+        assert_eq!(skipped[0].reason, "a file over 10 MiB");
+
+        let status = mneme.status().await.unwrap();
+        assert_eq!((status.pages, status.commits), (5, 10));
+        assert_eq!(mneme.known_status().map(|known| known.pages), Some(5));
+
+        let questions = mneme.questions().await.unwrap().unwrap();
+        assert_eq!(questions.total, 2);
+        assert_eq!(questions.questions[0].page.title, "Alpha");
     }
 
     #[tokio::test]
@@ -699,24 +837,37 @@ mod tests {
             order: Some(Order::Asc),
             offset: 50,
             limit: 25,
+            filters: Filters {
+                changed_within_days: Some(7),
+                min_versions: Some(2),
+                ..Filters::default()
+            },
         };
-        mneme.search("boats -sails", Some(7), sorted).await.unwrap();
+        mneme.search("boats -sails", sorted).await.unwrap();
         assert_eq!(
             stub.requests(),
             [
-                "/v1/search?offset=50&limit=25&sort=words&order=asc&q=boats+-sails&changed_within_days=7"
+                "/v1/search?offset=50&limit=25&sort=words&order=asc&changed_within_days=7&min_versions=2&q=boats+-sails"
             ]
         );
     }
 
+    #[test]
+    fn reads_a_skipped_list_of_another_shape_as_none() {
+        let machine: Machine = serde_json::from_str(
+            r#"{"name":"a","current":true,"skipped":"lots","skipped_more":-1,"later":1}"#,
+        )
+        .unwrap();
+        assert!(machine.skipped.is_none() && machine.skipped_more.is_none());
+        let older: Machine = serde_json::from_str(r#"{"name":"a","current":true}"#).unwrap();
+        assert!(older.skipped.is_none());
+    }
+
     #[tokio::test]
-    async fn ignores_fields_it_does_not_know() {
-        let machines = client(Stub::Fixtures).await.machines().await.unwrap();
-        assert_eq!(
-            machines.machines.len(),
-            3,
-            "the stub adds `skipped` to each"
-        );
+    async fn a_mneme_without_questions_has_none() {
+        let stub = stub::serve(Stub::Fixtures).await;
+        let mneme = Mneme::new(&format!("{}/old", stub.base), Duration::from_millis(500)).unwrap();
+        assert!(mneme.questions().await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -730,7 +881,7 @@ mod tests {
     async fn a_search_mneme_cannot_read_is_refused_with_its_reason() {
         let error = client(Stub::Fixtures)
             .await
-            .search("\"open", None, listing())
+            .search("\"open", listing())
             .await
             .unwrap_err();
         assert!(

@@ -13,6 +13,7 @@ atrium-core.workspace = true
 atrium-ui.workspace = true
 axum.workspace = true
 comrak.workspace = true
+futures-util.workspace = true
 jiff.workspace = true
 maud.workspace = true
 percent-encoding.workspace = true
@@ -22,3 +23,6 @@ serde_json.workspace = true
 serde_urlencoded.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+
+[dev-dependencies]
+scraper.workspace = true

@@ -11,7 +11,7 @@ use std::fmt;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
-use atrium_core::{Intensity, Local, NavEntry, Prefs, Visit};
+use atrium_core::{HomeOffer, Intensity, Local, NavEntry, Prefs, Visit};
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
@@ -336,6 +336,71 @@ impl Shell {
     }
 }
 
+/// The greeting the home page's sentence opens with.
+#[must_use]
+pub const fn greeting(hour: u8) -> &'static str {
+    match hour {
+        0..5 => "Still up.",
+        5..12 => "Good morning.",
+        12..18 => "Good afternoon.",
+        _ => "Good evening.",
+    }
+}
+
+/// The home page from every feature's part: the date, the opening sentence, the command
+/// line and the drawings above, and the tiles below. When a feature is away the page takes
+/// the away look, which the wiki's pages also use when Mneme does not answer.
+#[must_use]
+pub fn home(shell: &Shell, offers: &[(&'static str, HomeOffer)]) -> Page {
+    let away = offers.iter().any(|(_, offer)| offer.away);
+    let local = shell.local();
+    let names: Vec<String> = offers.iter().map(|(name, _)| name.to_lowercase()).collect();
+    let names = names.join(" and ");
+    let tiles_label = if away {
+        format!("While the {names} is away")
+    } else {
+        format!("The {names}")
+    };
+    let body = html! {
+        main #(MAIN) .home.away[away] {
+            section.hero aria-label="Today" {
+                div.lede {
+                    h1.label { time datetime=(local.now().date()) { (local.date_long(local.seconds())) } }
+                    p.sentence {
+                        span data-module="greet" { (greeting(local.hour())) }
+                        @for (_, offer) in offers {
+                            @for clause in &offer.said { " " (clause) }
+                        }
+                    }
+                    (cmd_line("cmd", shell.search()))
+                }
+                @for (_, offer) in offers {
+                    @if let Some(figure) = &offer.figure { (figure) }
+                }
+            }
+            section.tiles aria-label=(tiles_label) {
+                @for (_, offer) in offers {
+                    @for tile in &offer.tiles { (tile) }
+                }
+            }
+        }
+    };
+    let mut page = Page::new(
+        "Atrium",
+        "Home: what changed, what wants you, and where you left off.",
+        body,
+    );
+    page.since = !away;
+    if away {
+        page.description = "The wiki is briefly out of reach. The rest of Atrium works.";
+        page.current = Current::Href("/");
+        page.foot = Some(html! {
+            "The " (names) " did not answer. Everything else here is served by Atrium itself."
+        });
+    }
+    page
+}
+
 /// The field intensity, the night theme and the letter keys, as the masthead and the footer
 /// both offer them. Each button shows the reader's setting.
 fn controls(place: &str, prefs: Prefs) -> Markup {
@@ -448,6 +513,14 @@ mod tests {
         assert!(page.contains(r#"class="keys-btn" type="button" aria-pressed="false""#));
         let plain = document("/", Prefs::default());
         assert!(plain.contains(r#"<html lang="en" data-hour="9" data-intensity="normal">"#));
+    }
+
+    #[test]
+    fn the_greeting_follows_the_hour() {
+        assert_eq!(greeting(3), "Still up.");
+        assert_eq!(greeting(9), "Good morning.");
+        assert_eq!(greeting(14), "Good afternoon.");
+        assert_eq!(greeting(20), "Good evening.");
     }
 
     #[test]

@@ -108,16 +108,8 @@ async fn search(Query(search): Query<Search>, Query(paging): Query<Paging>) -> R
     paged(include_str!("../fixtures/search.json"), "hits", &paging)
 }
 
-/// The example, with a field Mneme is about to add, which Atrium must ignore.
 async fn machines() -> Response {
-    let mut body: Value =
-        serde_json::from_str(include_str!("../fixtures/machines.json")).unwrap_or_default();
-    if let Some(machines) = body["machines"].as_array_mut() {
-        for machine in machines {
-            machine["skipped"] = Value::Array(Vec::new());
-        }
-    }
-    json(body.to_string())
+    json(include_str!("../fixtures/machines.json").to_owned())
 }
 
 async fn pages(Query(paging): Query<Paging>) -> Response {
@@ -169,6 +161,10 @@ fn routes() -> Router {
         .route(
             "/v1/status",
             get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
+        )
+        .route(
+            "/v1/questions",
+            get(|| async { json(include_str!("../fixtures/questions.json").to_owned()) }),
         )
 }
 

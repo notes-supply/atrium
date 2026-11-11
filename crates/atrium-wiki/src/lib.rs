@@ -1,21 +1,27 @@
 //! The wiki feature: a reader for the wiki that Mneme holds.
 
+mod article;
+mod changes;
 pub mod demo;
+mod diff;
+mod history;
+pub mod home;
+mod list;
+mod lost;
+pub mod machines;
 mod markdown;
 pub mod mneme;
 mod routes;
+mod search;
 pub mod stub;
 
 use std::time::Duration;
 
-use atrium_core::{Feature, HomeContext, HomeFuture, HomeOffer, Local, NavEntry};
+use atrium_core::{Feature, HomeContext, HomeFuture, Local, NavEntry};
 use axum::Router;
 use maud::{Markup, html};
 
 use crate::mneme::Mneme;
-
-/// Changes the home page's tile lists.
-const TILE_CHANGES: u64 = 8;
 
 /// The place that holds the record, as the map draws it.
 pub const RECORD: &str = "apollo";
@@ -82,13 +88,8 @@ impl Feature for Wiki {
         Some("/wiki/search")
     }
 
-    fn home<'a>(&'a self, _context: &'a HomeContext) -> HomeFuture<'a> {
-        Box::pin(async {
-            HomeOffer {
-                tiles: vec![routes::latest(&self.mneme, TILE_CHANGES).await],
-                ..HomeOffer::default()
-            }
-        })
+    fn home<'a>(&'a self, context: &'a HomeContext) -> HomeFuture<'a> {
+        Box::pin(home::offer(&self.mneme, context))
     }
 
     fn footnote(&self, local: &Local) -> Option<Markup> {
