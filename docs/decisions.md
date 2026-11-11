@@ -12,7 +12,9 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 ## Crates and the registry
 
 - **`atrium-core` holds the contract:** `Feature`, `Access`, `Viewer`, `Tile`, `Command` and `NavEntry`. It is apart from `atrium-ui` so that replacing the design does not touch what features implement.
-- **Home lives in the server crate,** beside the registry it reads, and small features such as the clock do too. A feature with its own dependencies, such as the wiki, is a crate. The brief suggested an `atrium-home` crate; it would have needed the registry handed back to it.
+- **Home lives in the server crate,** beside the registry it reads. A feature with its own dependencies, such as the wiki, is a crate. The brief suggested an `atrium-home` crate; it would have needed the registry handed back to it. Home's layout is in `atrium-ui`, because the wiki's pages show the same layout when Mneme is away.
+- **The clock feature is gone.** It proved the registry in the skeleton; the chosen design has no clock tile or page, and the masthead shows the time.
+- **A feature offers navigation entries, a search target, a part of home and a footer line.** Home's part is clauses of the opening sentence, a drawing and tiles. The palette's commands are the navigation entries, which every page lists as plain links with keys `1` to `5`.
 - **`Feature::access` defaults to `Private`,** so a feature that says nothing is denied to everyone but the tailnet.
 - **Every feature's routes are mounted for every listener,** and one middleware refuses those the listener's viewer may not see. Navigation, commands and tiles leave such features out.
 
@@ -26,12 +28,12 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 
 ## The wiki
 
-- **Times are shown in UTC,** and recent changes are grouped by UTC day. Atrium has no time-zone setting yet; the distroless image carries the zone database for when it does.
-- **A link written as a file path,** such as `/wiki/notes/deep.md`, is looked up among the live pages, 500 at a time, and answered with 303 to the page's id. Mneme has no lookup by path. A path a page has since been renamed away from is not found.
+- **Times are shown in the reader's zone,** `--time-zone`, Stockholm by default, through `jiff` with its zone database built in, so the image needs none. `jiff` was already in the tree; `chrono-tz` would have added `chrono`. Recent changes are grouped by the reader's day, and `data-hour` on `<html>` is the reader's hour.
+- **A link written as a file path,** such as `/wiki/notes/deep.md`, is looked up among the live pages, then the deleted ones, then the old paths of renames in recent changes (the newest 4,000 events), 500 at a time. A live or renamed page gets 303 to its id; a deleted one gets 404 with what the record remembers of it. Mneme has no lookup by path, past or present.
 - **A link whose scheme is not `http`, `https` or `mailto` becomes its text.** comrak alone would keep it as a link with an empty `href`. Relative links to other files, such as images, stay as written; Mneme serves no files.
-- **Headings keep comrak's ids and its permalink anchor,** which has an `aria-label`, so `page.md#section` links land. The skip link's target is `main-content`, which only a heading named "Main content" would share.
+- **Headings keep comrak's ids, without its permalink anchor,** so `page.md#section` links land and the keyboard meets no invisible link. A formatter writes the design's article: tables in a focusable region with cells named for the phone layout, code in a focusable figure, the "Open questions" list with its mark, and `data-preview` on links to other pages. The first level-1 heading is the title, which the page shows in its own header.
 - **A page over Mneme's markup budget is shown as its raw text,** as Mneme indexes it, so one dense page cannot make comrak hold a very large tree.
-- **A diff line carries its sign as text** (`-`, `+`), inside `<del>` or `<ins>`, with changed words in `<mark>`. Screen readers do not announce `<del>` and `<ins>`.
+- **A diff reads as paragraphs and as lines.** A removed line and the added line after it are one paragraph, the words both keep written once and the changed ones in `<del>` and `<ins>`; when the kept words do not line up, the old line is removed and the new one added whole. The line view carries each sign as text. Version numbers count every event, oldest first, so a rename has a number too.
 - **Mneme errors map to one response each:** away, slow or failing is 503 with `Retry-After: 30`; an unknown page or commit is 404; a search Mneme cannot read is 400 with Mneme's reason; an answer Atrium cannot parse is 502.
 
 ## The Wasm pipeline
@@ -40,8 +42,8 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 - **wasm-bindgen is pinned at 0.2.129, one release behind crates.io's 0.2.130.** The CLI must equal the crate, and the build machine has a provenance-checked `mise.lock` entry for the 0.2.129 CLI and none for 0.2.130; writing a new one needs GitHub, which this build was not to use. Move both together.
 - **The server embeds the built files** with `include_bytes!` from `target/web`, so `mise run build:wasm` comes before any Cargo build of the server. The gate's clippy and test tasks depend on it, and it is skipped when its sources have not changed.
 - **The glue and the loader are not minified.** shebang-web minifies with Bun, which would be one more tool for about 1.5 KB of brotli. The loader is 531 bytes as written.
-- **The palette sits in every page's footer, where the commands are plain links,** so every page that has commands loads the loader. A page without commands, such as any page for an anonymous viewer today, has no script. The loader starts each module once from its element's `data-glue` and `data-wasm`.
-- **Command keys such as `g w` are real:** typed outside a field, one after the other within 1.5 seconds, they follow the command.
+- **Every page loads the loader,** since every page has modules (`keys`, `light`, `carry`, `field`, `prefs`, `palette`). Until the bundles land, the masthead's Jump link carries the skeleton palette's `data-glue` and `data-wasm`, so the present loader still starts it.
+- **Section keys are `1` to `5`,** the bracketed index in the masthead, as the design has them. The skeleton's `g w` sequences are gone with the footer's command list. A switch in the settings turns single-letter keys off (`atrium-keys=off`, `data-keys="off"` on `<html>`).
 - **The palette was not driven in a browser.** Headless Chromium does not start on the build machine. The module and glue instantiate under Bun and run up to the missing `window`; the markup, headers and asset types are tested.
 
 ## The image
@@ -49,3 +51,16 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 - **The image builds the server with Rust 1.99.1 stable** in `rust:1.99.1-alpine3.24`, not the gate's pinned nightly. The build was to fetch only crates and base images, and installing the nightly in the builder needs rustup's own servers. Nothing in the server needs nightly. The Wasm module is built by the pinned nightly on the host and copied in, so it is the same file either way.
 - **The runtime is `distroless/static-debian13:nonroot`,** both bases pinned by digest. Debian 13 is the newest distroless static.
 - **`mise run image` also runs the image:** read-only, it answers `/healthz` and home, and exits 0 on SIGTERM. It then fails on any High or Critical finding from Trivy when Trivy is installed. Trivy reads the image's Debian packages; the Rust dependencies are checked by `cargo deny` in the gate, since the binary carries no `cargo auditable` record.
+
+## The chosen design
+
+- **The prototype's files are copied as they are.** `atrium.css`, `tokens.css`, the fonts and the dither masks are byte for byte the prototype's, so a later change to the design is a diff against it. What the server adds is in `port.css`: the letter-key switch and a `[hidden]` rule.
+- **One stylesheet.** The server folds `tokens.css`, the drawn sizes and `atrium.css` into one hashed file in the order the imports gave, so a first visit makes one request instead of three in a row. `tokens.css` stays the one source of every value.
+- **The drawings are ported to Rust** (`atrium-ui/src/draw.rs`) and were compared byte for byte with the prototype's map, places and mark. A place is drawn by name: `blackbox` and `aeolus` have their own, another machine takes the first free one, and a third machine is on the machines page but not on the map. `data-m` names the drawing, which the stylesheet colours.
+- **Pages work without scripts from the first paint.** The server writes `data-hour`, `data-theme`, `data-intensity` and `data-keys` from the clock and the cookies the settings write, so there is no boot script.
+- **The last visit is a cookie the server keeps,** `atrium-visit`, holding the previous visit and this one. A pause over thirty minutes starts a new visit. It is `HttpOnly`, `SameSite=Lax`, and `Secure` when `X-Forwarded-Proto` says the request came over HTTPS.
+- **Reading positions stay in the browser.** "Continue reading" and the "you were here before" note are hidden slots the reading module fills, so without scripts they are absent.
+- **Machines are judged in one function** (`machines::judge`). Needs you: blocked, stopped, unseen for over ten minutes or never, or behind for over ten minutes, where behind is measured from the record's head time, the newest commit the machine has not reported. Worth a look: offline, or files kept out of saves. The legend states Mneme's meanings rather than the prototype's.
+- **Home waits 500 ms** for its tiles, all fetched at once. A tile that misses it is a quiet "briefly away" tile and its clause leaves the sentence; when nothing answers, home takes the away look and still answers 200.
+- **Lists page as the design shows them:** 16 pages, 10 events of a history, five days of changes.
+- **The demo is the same code.** `atrium --demo` starts a stand-in for Mneme in the process, filled with the prototype's content in Mneme's shapes, and holds the clock at the prototype's 09:41. Its week is computed from its own changes, so it is sparser than the prototype's random one.
