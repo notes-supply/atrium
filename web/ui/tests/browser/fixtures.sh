@@ -20,4 +20,15 @@ for page in "$from"/*.html; do
     -e 's#data-module="keys light carry since"#data-module="keys light carry"#' \
     "$page" >"$out/$(basename "$page")"
 done
+# Continue reading lives in the browser: the server writes only the empty, hidden slots.
+perl -0pi -e 's#<article class="tile resume surface" data-surface aria-labelledby="resume-h">\s*(<header.*?</header>).*?</article>#<article class="tile resume surface" data-surface aria-labelledby="resume-h" data-module="continue" hidden>\n      $1\n    </article>#s' "$out/index.html"
+perl -0pi -e 's#<p class="resume-note">(<svg.*?</svg>)<span>.*?</span></p>#<p class="resume-note" hidden>$1<span></span></p>#s' "$out/page.html"
+# The progress bar's steps, and hidden slots that stay hidden, which the server's
+# stylesheet will carry.
+{
+  for p in $(seq 0 5 100); do
+    echo ".pb-fill.pct-$p { width: $p%; } .pb-n.pct-$p { left: $p%; }"
+  done
+  echo ".tile[hidden], .resume-note[hidden] { display: none; }"
+} >>"$out/assets/drawn.css"
 grep -L 'data-ui=' "$out"/*.html | sed 's/^/no loader: /' >&2

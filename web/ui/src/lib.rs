@@ -13,6 +13,7 @@ mod keys;
 mod light;
 mod palette;
 mod prefs;
+mod resume;
 mod toc;
 
 type Mount = fn(&Element) -> Result<(), JsValue>;
@@ -27,6 +28,7 @@ const MODULES: &[(&str, Mount)] = &[
         clock::mount(element);
         Ok(())
     }),
+    ("continue", resume::mount),
     ("diff", diff::mount),
     ("greet", |element| {
         greet::mount(element);
