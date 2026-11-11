@@ -1,6 +1,7 @@
 //! The registry: every feature, listed once. The router, the navigation, the home page and
 //! the command palette all come from this list.
 
+mod clock;
 mod home;
 
 use std::sync::Arc;
@@ -19,6 +20,7 @@ pub fn registry(config: &Config) -> Result<Vec<Arc<dyn Feature>>> {
     Ok(vec![
         Arc::new(home::Home),
         Arc::new(Wiki::new(&config.mneme_url, timeout)?),
+        Arc::new(clock::Clock),
     ])
 }
 
