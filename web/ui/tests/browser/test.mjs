@@ -17,11 +17,12 @@ export const test = base.extend({
   },
 });
 
-// The ui bundle mounts every module in one synchronous pass, and prefs marks the current
-// intensity as it mounts, so once a swatch is pressed every module is in place.
+// The ui bundle mounts every module in one synchronous pass, and the clock, on every
+// page, rewrites its datetime as a full ISO time as it mounts. The server writes it to the
+// minute, so once it ends in Z every module is in place.
 export async function open(page, path) {
   await page.goto(path);
-  await expect(page.locator('.prefs-mast .swatch[aria-pressed="true"]')).toHaveCount(1);
+  await expect(page.locator('time.clock[datetime$="Z"]')).toHaveCount(1);
 }
 
 export const cookie = async (page, name) => (await page.context().cookies()).find((c) => c.name === name)?.value;
