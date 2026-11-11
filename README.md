@@ -2,7 +2,7 @@
 
 Atrium is a private homepage and dashboard for one person, reached over a tailnet. Its first feature reads the wiki that Mneme holds, through Mneme's JSON reading API.
 
-Pages are HTML that works without script, in the design the owner chose, which lives in `crates/atrium-ui`. Rust Wasm modules add behaviour on top, loaded by `data-module` attributes.
+Pages are HTML that works without script, in the design the owner chose, which lives in `crates/atrium-ui`. Rust Wasm modules add behaviour on top, loaded by `data-module` attributes: the field behind every page, the command palette, keys, live search, link previews and the rest, in two bundles described in `web/README.md`.
 
 ## Run it
 
@@ -33,8 +33,9 @@ Logs are JSON lines on standard error, one per request. SIGTERM stops it after t
 | `crates/atrium-core` | The contract: `Feature`, `Access`, `Viewer`, `Tile`, `Command`. |
 | `crates/atrium-ui` | The design: the page shell, components, drawings, stylesheet and fonts. |
 | `crates/atrium-wiki` | The wiki: Mneme's client, one module per page, Markdown rendering, and stand-ins for Mneme for tests and the demo. |
-| `tools/check` | The parity and axe checks, run in Playwright's image. |
-| `web/palette` | The command palette, a Wasm module. `web/loader.js` is the only script a page loads. |
+| `web/ui`, `web/field` | The browser modules in two Wasm bundles, every small behaviour and the WebGL field, with their browser tests. `web/loader.js` is the only script a page loads. |
+| `tools/browser.sh` | Runs a command in Playwright's image against `atrium --demo`, with the npm packages `package-lock.json` pins. |
+| `tools/check` | The parity check against the prototype. |
 
 A feature implements `atrium_core::Feature`: an id, a name, its routes, and optionally its access, navigation link, home tiles and palette commands. Access defaults to `Private`, which only the tailnet sees. The server builds its router, navigation, home page and palette from the registry alone, and one middleware refuses a route to a viewer its feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
 
@@ -46,10 +47,14 @@ A feature implements `atrium_core::Feature`: an id, a name, its routes, and opti
 mise run gate
 ```
 
-The gate builds the Wasm module, checks formatting, runs clippy natively and for Wasm with warnings denied, runs the tests with nextest against a stand-in that serves Mneme's example responses, checks the RustSec advisories and lints the CI workflow. Set `MISE_OFFLINE=1` to check the advisories against the local copy of the database.
+The gate builds the Wasm bundles and holds them to their size budgets, checks formatting, runs clippy natively and for Wasm with warnings denied, runs the tests with nextest against a stand-in that serves Mneme's example responses, checks the RustSec advisories and lints the CI workflow. Set `MISE_OFFLINE=1` to check the advisories against the local copy of the database.
 
 `mise run test:mneme` runs one more test against a real `mneme serve`, with a wiki pushed by `git`. Set `ATRIUM_MNEME_BIN` to a `mneme` binary.
 
-`mise run parity` screenshots every route of the demo beside the prototype page it stands for, scripts off, at 1440 and 390 px in day and night, and reports the share of differing pixels; `mise run axe` runs axe on the same pages. Both need Docker and write to `target/check`. Set `PROTOTYPE` and `NODE_MODULES` (Playwright 1.64.1 and `@axe-core/playwright`) where they are not at their defaults.
+`mise run test:browser` drives every browser module, every route at 1440 and 390 px in day and night, and axe with scripts on and off, in Chromium against `atrium --demo`. `mise run axe` runs only axe. CI runs the browser tests in a job of their own, and `gate` passes only when both jobs did.
 
-`mise run image` builds the container image, answers a request with it, and scans it with Trivy when Trivy is installed. Nothing is pushed.
+`mise run parity` screenshots every route of the demo beside the prototype page it stands for, at 1440 and 390 px in day and night, and reports the share of differing pixels: scripts off, or with `-- --scripts`, scripts on under reduced motion. It writes to `target/check`. Set `PROTOTYPE` where the prototype is not at its default.
+
+These run in Playwright's image through `tools/browser.sh`, which needs Docker and three free ports from `PORT` (18760 by default), and installs Playwright 1.64.1 and axe from `package-lock.json` with `npm ci` in the image.
+
+`mise run image` builds the container image, answers home and serves the bundles with it, and scans it with Trivy when Trivy is installed. Nothing is pushed.
