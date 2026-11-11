@@ -470,6 +470,15 @@ async fn recent(mneme: &Mneme, query: Result<Query<Params>, QueryRejection>) -> 
     Ok(("Recent changes".to_owned(), main))
 }
 
+/// The `count` latest changes for the home page, or a line saying the wiki is away.
+pub async fn latest(mneme: &Mneme, count: u64) -> Markup {
+    if let Ok(found) = mneme.changes(0, count).await {
+        html! { ol { @for change in &found.events { (event(change, true)) } } }
+    } else {
+        html! { p { "The wiki is briefly away." } }
+    }
+}
+
 async fn search(
     shell: Shell,
     State(mneme): State<Mneme>,

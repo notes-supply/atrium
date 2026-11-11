@@ -8,10 +8,13 @@ pub mod stub;
 
 use std::time::Duration;
 
-use atrium_core::{Command, Feature};
+use atrium_core::{Command, Feature, Tile, TileSize, Tiles};
 use axum::Router;
 
 use crate::mneme::Mneme;
+
+/// Changes the home page's tile lists.
+const TILE_CHANGES: u64 = 5;
 
 /// The wiki, read from the Mneme at one URL.
 pub struct Wiki {
@@ -46,6 +49,19 @@ impl Feature for Wiki {
 
     fn routes(&self) -> Router {
         routes::router(self.mneme.clone())
+    }
+
+    fn tiles(&self) -> Tiles<'_> {
+        Box::pin(async {
+            let body = routes::latest(&self.mneme, TILE_CHANGES).await;
+            vec![Tile {
+                id: "wiki-changes",
+                title: "Recent changes",
+                size: TileSize::Wide,
+                body,
+                link: Some("/wiki/changes"),
+            }]
+        })
     }
 
     fn commands(&self) -> &'static [Command] {

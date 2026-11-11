@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use axum::Router;
-use axum::extract::{Query, Request, State};
+use axum::extract::{Path, Query, Request, State};
 use axum::http::{StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -57,21 +57,40 @@ impl Running {
 
 const ALPHA: &str = "4226c96dd1386f3a";
 
-fn json(body: &'static str) -> Response {
+fn json(body: String) -> Response {
     ([(header::CONTENT_TYPE, "application/json")], body).into_response()
 }
 
 fn missing() -> Response {
-    (
-        StatusCode::NOT_FOUND,
-        [(header::CONTENT_TYPE, "application/json")],
-        r#"{"error":"no such page"}"#,
-    )
-        .into_response()
+    let body = r#"{"error":"no such page"}"#.to_owned();
+    (StatusCode::NOT_FOUND, json(body)).into_response()
 }
 
-fn of_alpha(id: &str, body: &'static str) -> Response {
-    if id == ALPHA { json(body) } else { missing() }
+/// Which part of a listing to answer, as Mneme reads it.
+#[derive(Deserialize)]
+struct Paging {
+    #[serde(default)]
+    offset: usize,
+    #[serde(default = "fifty")]
+    limit: usize,
+}
+
+const fn fifty() -> usize {
+    50
+}
+
+/// An example listing cut to the part `paging` asks for. `total` stays the whole count.
+fn paged(example: &str, field: &str, paging: &Paging) -> Response {
+    let mut body: Value = serde_json::from_str(example).unwrap_or_default();
+    if let Some(items) = body[field].as_array_mut() {
+        let kept: Vec<Value> = items
+            .drain(..)
+            .skip(paging.offset)
+            .take(paging.limit)
+            .collect();
+        *items = kept;
+    }
+    json(body.to_string())
 }
 
 #[derive(Deserialize)]
@@ -79,12 +98,12 @@ struct Search {
     q: String,
 }
 
-async fn search(Query(search): Query<Search>) -> Response {
+async fn search(Query(search): Query<Search>, Query(paging): Query<Paging>) -> Response {
     if search.q.matches('"').count() % 2 == 1 {
-        let error = r#"{"error":"a search with an open quote cannot be read"}"#;
-        return (StatusCode::BAD_REQUEST, error).into_response();
+        let error = r#"{"error":"a search with an open quote cannot be read"}"#.to_owned();
+        return (StatusCode::BAD_REQUEST, json(error)).into_response();
     }
-    json(include_str!("../fixtures/search.json"))
+    paged(include_str!("../fixtures/search.json"), "hits", &paging)
 }
 
 /// The example, with a field Mneme is about to add, which Atrium must ignore.
@@ -96,55 +115,53 @@ async fn machines() -> Response {
             machine["skipped"] = Value::Array(Vec::new());
         }
     }
-    (
-        [(header::CONTENT_TYPE, "application/json")],
-        body.to_string(),
-    )
-        .into_response()
+    json(body.to_string())
+}
+
+async fn pages(Query(paging): Query<Paging>) -> Response {
+    paged(include_str!("../fixtures/pages.json"), "pages", &paging)
+}
+
+async fn changes(Query(paging): Query<Paging>) -> Response {
+    paged(include_str!("../fixtures/changes.json"), "events", &paging)
+}
+
+async fn page(Path(id): Path<String>) -> Response {
+    of_alpha(&id, || {
+        json(include_str!("../fixtures/page.json").to_owned())
+    })
+}
+
+async fn versions(Path(id): Path<String>, Query(paging): Query<Paging>) -> Response {
+    of_alpha(&id, || {
+        paged(include_str!("../fixtures/versions.json"), "events", &paging)
+    })
+}
+
+async fn version(Path((id, _commit)): Path<(String, String)>) -> Response {
+    of_alpha(&id, || {
+        json(include_str!("../fixtures/version.json").to_owned())
+    })
+}
+
+async fn diff(Path(id): Path<String>) -> Response {
+    of_alpha(&id, || {
+        json(include_str!("../fixtures/diff.json").to_owned())
+    })
+}
+
+fn of_alpha(id: &str, answer: impl FnOnce() -> Response) -> Response {
+    if id == ALPHA { answer() } else { missing() }
 }
 
 fn routes() -> Router {
     Router::new()
-        .route(
-            "/v1/pages",
-            get(|| async { json(include_str!("../fixtures/pages.json")) }),
-        )
-        .route(
-            "/v1/pages/{id}",
-            get(
-                |axum::extract::Path(id): axum::extract::Path<String>| async move {
-                    of_alpha(&id, include_str!("../fixtures/page.json"))
-                },
-            ),
-        )
-        .route(
-            "/v1/pages/{id}/versions",
-            get(
-                |axum::extract::Path(id): axum::extract::Path<String>| async move {
-                    of_alpha(&id, include_str!("../fixtures/versions.json"))
-                },
-            ),
-        )
-        .route(
-            "/v1/pages/{id}/versions/{commit}",
-            get(
-                |axum::extract::Path((id, _)): axum::extract::Path<(String, String)>| async move {
-                    of_alpha(&id, include_str!("../fixtures/version.json"))
-                },
-            ),
-        )
-        .route(
-            "/v1/pages/{id}/diff",
-            get(
-                |axum::extract::Path(id): axum::extract::Path<String>| async move {
-                    of_alpha(&id, include_str!("../fixtures/diff.json"))
-                },
-            ),
-        )
-        .route(
-            "/v1/changes",
-            get(|| async { json(include_str!("../fixtures/changes.json")) }),
-        )
+        .route("/v1/pages", get(pages))
+        .route("/v1/pages/{id}", get(page))
+        .route("/v1/pages/{id}/versions", get(versions))
+        .route("/v1/pages/{id}/versions/{commit}", get(version))
+        .route("/v1/pages/{id}/diff", get(diff))
+        .route("/v1/changes", get(changes))
         .route("/v1/search", get(search))
         .route("/v1/machines", get(machines))
 }

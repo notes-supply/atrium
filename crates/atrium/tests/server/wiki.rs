@@ -39,6 +39,26 @@ async fn pages_are_listed_with_sort_and_order_links() {
 }
 
 #[tokio::test]
+async fn home_shows_the_latest_changes_as_a_tile() {
+    let atrium = Atrium::tailnet().await;
+    let home = atrium.get("/").await;
+    assert_eq!(home.status, 200);
+    assert_eq!(texts(&home.body, ".tiles > li h2"), ["Recent changes"]);
+    assert_eq!(
+        attrs(&home.body, "#wiki-changes h2 a", "href"),
+        ["/wiki/changes"]
+    );
+    let changes = texts(&home.body, "#wiki-changes ol li");
+    assert_eq!(changes.len(), 5, "{changes:?}");
+    assert!(
+        changes[0].contains("greek/alpha.md edited"),
+        "{}",
+        changes[0]
+    );
+    assert_eq!(atrium.mneme.requests(), ["/v1/changes?offset=0&limit=5"]);
+}
+
+#[tokio::test]
 async fn a_chosen_sort_reaches_mneme_and_is_marked() {
     let atrium = Atrium::tailnet().await;
     let reply = atrium.get("/wiki?sort=words&order=asc").await;
@@ -261,7 +281,12 @@ async fn away(stub: Stub) {
         assert_eq!(reply.header("retry-after"), Some("30"), "{path}");
         assert_eq!(texts(&reply.body, "h1"), ["The wiki is briefly away"]);
     }
-    assert_eq!(atrium.get("/").await.status, 200);
+    let home = atrium.get("/").await;
+    assert_eq!(home.status, 200);
+    assert_eq!(
+        texts(&home.body, "#wiki-changes p"),
+        ["The wiki is briefly away."]
+    );
 }
 
 #[tokio::test]
