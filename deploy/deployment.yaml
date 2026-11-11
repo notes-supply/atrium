@@ -1,0 +1,91 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: atrium
+  labels:
+    app.kubernetes.io/name: atrium
+spec:
+  replicas: 2
+  revisionHistoryLimit: 5
+  # A new pod has to be ready before an old one goes, so a release whose pods never get
+  # ready leaves both old pods serving.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: atrium
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: atrium
+    spec:
+      automountServiceAccountToken: false
+      enableServiceLinks: false
+      imagePullSecrets:
+        - name: ghcr-pull
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      nodeSelector:
+        kubernetes.io/os: linux
+        kubernetes.io/arch: amd64
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: DoNotSchedule
+          nodeTaintsPolicy: Honor
+          labelSelector:
+            matchLabels:
+              app.kubernetes.io/name: atrium
+          # Spread each release's own pods; counting the old ones mid-rollout can leave
+          # both new pods on one node.
+          matchLabelKeys: [pod-template-hash]
+      containers:
+        - name: atrium
+          # The release names the image by digest; see tools/release.sh.
+          image: atrium
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            - name: ATRIUM_VIEWER
+              value: tailnet
+            - name: ATRIUM_ALLOWED_HOSTS
+              value: atrium.ts.notes.supply
+            - name: ATRIUM_MNEME_URL
+              value: http://mneme:8080
+            - name: ATRIUM_TIME_ZONE
+              value: Europe/Stockholm
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 20
+          # Traefik keeps sending to a stopping pod until it sees the endpoint go.
+          lifecycle:
+            preStop:
+              sleep:
+                seconds: 5
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
