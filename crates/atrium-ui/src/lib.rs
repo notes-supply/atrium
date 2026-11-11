@@ -12,8 +12,8 @@ use axum::response::{IntoResponse, Response};
 use jiff::Timestamp;
 use maud::{DOCTYPE, Markup, Render, html};
 
-/// The whole stylesheet. The server serves it under a name with its hash in it.
-pub const STYLESHEET: &str = include_str!("atrium.css");
+pub mod assets;
+pub mod draw;
 
 /// The id of the element the skip link leads to. Markdown headings get ids too, so it is
 /// unlikely to be a heading's.

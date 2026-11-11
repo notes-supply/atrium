@@ -4,11 +4,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use axum::body::Bytes;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE};
 use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
+
+use atrium_ui::assets::{DITHER, FONTS, PRELOADED, stylesheet};
 
 use crate::middleware::hex;
 
@@ -24,20 +27,39 @@ pub struct Assets(HashMap<String, Asset>);
 
 #[derive(Debug)]
 struct Asset {
-    bytes: &'static [u8],
+    bytes: Bytes,
     content_type: &'static str,
 }
 
 impl Assets {
+    /// Adds the fonts, the dither masks and the stylesheet that names them, and returns the
+    /// stylesheet's URL and each preloaded font's.
+    pub fn add_styles(&mut self) -> (String, Vec<String>) {
+        let mut urls = HashMap::new();
+        for file in FONTS.iter().chain(&DITHER) {
+            let url = self.add(file.stem, file.extension, Bytes::from_static(file.bytes));
+            urls.insert(file.stem, url);
+        }
+        let css = stylesheet(|file| urls.get(file.stem).cloned().unwrap_or_default());
+        let preloaded = PRELOADED
+            .iter()
+            .filter_map(|stem| urls.get(stem).cloned())
+            .collect();
+        (self.add("atrium", "css", css), preloaded)
+    }
+
     /// Adds `bytes` as `stem` with `extension`, and returns the URL it is served at.
-    pub fn add(&mut self, stem: &str, extension: &str, bytes: &'static [u8]) -> String {
+    pub fn add(&mut self, stem: &str, extension: &str, bytes: impl Into<Bytes>) -> String {
+        let bytes = bytes.into();
         let content_type = match extension {
             "css" => "text/css; charset=utf-8",
             "js" => "text/javascript; charset=utf-8",
             "wasm" => "application/wasm",
+            "woff2" => "font/woff2",
+            "svg" => "image/svg+xml",
             _ => "application/octet-stream",
         };
-        let name = format!("{stem}.{}.{extension}", hex(&Sha256::digest(bytes)[..8]));
+        let name = format!("{stem}.{}.{extension}", hex(&Sha256::digest(&bytes)[..8]));
         let url = format!("/assets/{name}");
         self.0.insert(
             name,
@@ -58,7 +80,7 @@ pub async fn serve(State(assets): State<Arc<Assets>>, Path(name): Path<String>) 
                 (CONTENT_TYPE, asset.content_type),
                 (CACHE_CONTROL, "public, max-age=31536000, immutable"),
             ],
-            asset.bytes,
+            asset.bytes.clone(),
         )
             .into_response(),
         None => StatusCode::NOT_FOUND.into_response(),

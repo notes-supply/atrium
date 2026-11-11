@@ -12,6 +12,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use atrium_core::Viewer;
 use atrium_ui::{Chrome, Module, Shell};
+use axum::body::Bytes;
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
@@ -82,11 +83,15 @@ pub async fn run(config: Config) -> Result<()> {
 /// Fails when a feature cannot be built from the configuration.
 pub fn app(config: &Config) -> Result<Router> {
     let mut assets = Assets::default();
-    let stylesheet = assets.add("atrium", "css", atrium_ui::STYLESHEET.as_bytes());
-    let loader = assets.add("loader", "js", assets::LOADER);
+    let (stylesheet, _fonts) = assets.add_styles();
+    let loader = assets.add("loader", "js", Bytes::from_static(assets::LOADER));
     let palette = Module {
-        glue: assets.add("palette", "js", assets::PALETTE_GLUE),
-        wasm: assets.add("palette_bg", "wasm", assets::PALETTE_WASM),
+        glue: assets.add("palette", "js", Bytes::from_static(assets::PALETTE_GLUE)),
+        wasm: assets.add(
+            "palette_bg",
+            "wasm",
+            Bytes::from_static(assets::PALETTE_WASM),
+        ),
     };
     let site = Arc::new(Site::new(features::registry(config)?, config.viewer));
     let chrome = Arc::new(Chrome {
