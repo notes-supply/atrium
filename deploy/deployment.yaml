@@ -77,13 +77,15 @@ spec:
             preStop:
               sleep:
                 seconds: 5
+          # Measured on kind with a one-page wiki: 0.1m CPU and 2.5 MiB at rest; at 220
+          # requests a second per pod, 108m CPU and a 5.3 MiB peak.
           resources:
             requests:
               cpu: 10m
-              memory: 32Mi
+              memory: 16Mi
             limits:
               cpu: 500m
-              memory: 128Mi
+              memory: 64Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
