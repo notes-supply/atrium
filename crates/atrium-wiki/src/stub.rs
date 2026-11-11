@@ -1,6 +1,6 @@
 //! A stand-in for Mneme that serves Mneme's own example responses, so tests need no Mneme
-//! built. Only the page `4226c96dd1386f3a` has a text, history and diff; every other page is
-//! unknown.
+//! built, or the demo's invented wiki. In the examples only the page `4226c96dd1386f3a` has a
+//! text, history and diff; every other page is unknown.
 
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
@@ -20,6 +20,8 @@ use tokio::net::TcpListener;
 pub enum Stub {
     /// Answers every route with its example.
     Fixtures,
+    /// Answers with the design's invented wiki.
+    Demo,
     /// Answers only after this long.
     Slow(Duration),
     /// Nothing listens at its address.
@@ -203,6 +205,7 @@ pub async fn serve(stub: Stub) -> Running {
     let requests = Arc::new(Mutex::new(Vec::new()));
     let app = match stub {
         Stub::Fixtures => routes(),
+        Stub::Demo => crate::demo::routes(),
         Stub::Slow(delay) => {
             routes().layer(middleware::from_fn(move |request, next: Next| async move {
                 tokio::time::sleep(delay).await;

@@ -13,7 +13,7 @@ use atrium_wiki::Wiki;
 use futures_util::future::join_all;
 use maud::Markup;
 
-use crate::Config;
+use crate::{Config, Demo};
 
 /// How much longer than the tiles' deadline home waits for a feature that overruns it.
 const GRACE: Duration = Duration::from_millis(100);
@@ -21,10 +21,11 @@ const GRACE: Duration = Duration::from_millis(100);
 /// Every feature, in the order the navigation lists them.
 pub fn registry(config: &Config, mneme_url: &str) -> Result<Vec<Arc<dyn Feature>>> {
     let timeout = Duration::from_millis(config.mneme_timeout_ms);
-    Ok(vec![
-        Arc::new(home::Home),
-        Arc::new(Wiki::new(mneme_url, timeout)?),
-    ])
+    let wiki = Wiki::new(mneme_url, timeout)?;
+    if config.demo == Some(Demo::Away) {
+        wiki.mneme().heard_at(atrium_wiki::demo::LAST_HEARD);
+    }
+    Ok(vec![Arc::new(home::Home), Arc::new(wiki)])
 }
 
 /// The registry as one listener's viewer sees it.

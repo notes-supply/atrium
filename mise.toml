@@ -14,6 +14,11 @@ rust = { version = "nightly-2026-10-28", profile = "minimal", components = "rust
 "github:wasm-bindgen/wasm-bindgen" = "0.2.129"
 "aqua:WebAssembly/binaryen" = "133"
 
+[tasks.demo]
+description = "Run Atrium on 127.0.0.1:8080 with the design's invented wiki, no Mneme needed"
+depends = ["build:wasm"]
+run = "cargo run -- --demo --addr 127.0.0.1:8080 --viewer tailnet --allowed-hosts localhost,127.0.0.1"
+
 [tasks.dev]
 description = "Run Atrium for the tailnet on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
 depends = ["build:wasm"]
@@ -111,6 +116,14 @@ else
 fi
 echo "$tag"
 {% endraw %}"""
+
+[tasks.parity]
+description = "Compare each route of atrium --demo with the prototype, scripts off, at 1440 and 390 px, day and night (needs Docker)"
+run = "tools/check/run.sh parity"
+
+[tasks.axe]
+description = "Run axe on each route of atrium --demo, scripts off, at 1440 and 390 px, day and night (needs Docker)"
+run = "tools/check/run.sh axe"
 
 [tasks.gate]
 description = "Everything that proves the repository is good"
