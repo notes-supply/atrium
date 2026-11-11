@@ -83,6 +83,12 @@ async fn renamed_from(mneme: &Mneme, path: &str) -> Result<Option<PageId>, Mneme
     Ok(None)
 }
 
+/// The live page at `path`, if one is there now.
+pub async fn live_page(mneme: &Mneme, path: &str) -> Result<Option<PageId>, MnemeError> {
+    let live = find_page(mneme, |page| page.path == path && page.deleted.is_none());
+    Ok(live.await?.map(|page| page.id))
+}
+
 enum Found {
     Here(PageId),
     Gone(Page),
@@ -90,9 +96,8 @@ enum Found {
 }
 
 async fn look_up(mneme: &Mneme, path: &str) -> Result<Found, MnemeError> {
-    let live = find_page(mneme, |page| page.path == path && page.deleted.is_none());
-    if let Some(page) = live.await? {
-        return Ok(Found::Here(page.id));
+    if let Some(id) = live_page(mneme, path).await? {
+        return Ok(Found::Here(id));
     }
     if let Some(page) = find_page(mneme, |page| page.path == path).await? {
         return Ok(Found::Gone(page));

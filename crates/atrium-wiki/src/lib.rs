@@ -2,6 +2,7 @@
 
 mod article;
 mod changes;
+mod data;
 pub mod demo;
 mod diff;
 mod history;

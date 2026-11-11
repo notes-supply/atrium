@@ -20,7 +20,7 @@ use maud::{Markup, html};
 use serde::Deserialize;
 
 use crate::mneme::{Event, EventKind, Filters, Listing, Mneme, MnemeError, PageId, Sort};
-use crate::{article, changes, diff, history, list, lost, machines, search};
+use crate::{article, changes, data, diff, history, list, lost, machines, search};
 
 /// Every route of the wiki.
 pub fn router(mneme: Mneme) -> Router {
@@ -33,6 +33,8 @@ pub fn router(mneme: Mneme) -> Router {
         .route("/wiki/changes", get(changes::show))
         .route("/wiki/search", get(search::show))
         .route("/wiki/machines", get(machines::show))
+        .route("/wiki/index.json", get(data::index))
+        .route("/wiki/preview.json", get(data::preview))
         .route("/wiki/{*path}", get(lost::by_path))
         .with_state(mneme)
 }

@@ -268,6 +268,16 @@ pub fn render(markdown: &str, path: &str) -> Rendered {
     }
 }
 
+/// The words of a text's first paragraph, as a preview shows them.
+#[must_use]
+pub fn first_paragraph(markdown: &str) -> String {
+    let arena = Arena::new();
+    let root = comrak::parse_document(&arena, markdown, &options());
+    root.descendants()
+        .find(|node| matches!(node.data().value, NodeValue::Paragraph))
+        .map_or_else(String::new, text_of)
+}
+
 /// Puts a node's children where it was, and drops the node.
 fn unwrap<'a>(node: &'a AstNode<'a>) {
     while let Some(child) = node.first_child() {
@@ -457,6 +467,14 @@ mod tests {
         assert!(
             out.contains(r#"<h2 id="restore-a-file">Restore a file</h2>"#),
             "{out}"
+        );
+    }
+
+    #[test]
+    fn a_preview_is_the_first_paragraphs_words() {
+        assert_eq!(
+            first_paragraph("# Title\n\nOnly [apollo](a.md) may *reach* `tank`.\n\nMore."),
+            "Only apollo may reach tank."
         );
     }
 

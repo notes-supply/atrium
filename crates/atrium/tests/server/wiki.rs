@@ -399,3 +399,27 @@ async fn home_does_not_wait_for_a_slow_mneme() {
         home.body
     );
 }
+
+#[tokio::test]
+async fn the_modules_read_the_page_index_and_previews_as_json() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let index = atrium.get("/wiki/index.json").await;
+    assert_eq!(index.status, 200);
+    assert_eq!(index.header("content-type"), Some("application/json"));
+    let pages: serde_json::Value = serde_json::from_str(&index.body).unwrap();
+    assert_eq!(pages[0]["t"], "Keyboard build: Corne v4", "newest first");
+    let preview = atrium
+        .get("/wiki/preview.json?href=/wiki/homelab/tailnet-acls.md")
+        .await;
+    assert_eq!(preview.status, 200);
+    let preview: serde_json::Value = serde_json::from_str(&preview.body).unwrap();
+    assert_eq!(preview["title"], "Tailnet ACLs");
+    assert!(
+        preview["text"]
+            .as_str()
+            .unwrap()
+            .starts_with("Only apollo may reach")
+    );
+    let missing = atrium.get("/wiki/preview.json?href=/wiki/nothing.md").await;
+    assert_eq!(missing.status, 404);
+}
