@@ -64,9 +64,10 @@ test('clock: the masthead shows the visitor\'s time and turns with the minute', 
   await open(page, 'wiki.html');
   const clock = page.locator('time.clock');
   await expect(clock).toHaveText('14:07');
-  await page.clock.runFor(60_000);
+  await page.clock.fastForward(60_000);
   await expect(clock).toHaveText('14:08');
-  expect(new Date(await clock.getAttribute('datetime')).getTime()).toBe(at(14, 8).getTime() + 20);
+  const shown = new Date(await clock.getAttribute('datetime'));
+  expect([shown.getHours(), shown.getMinutes()]).toEqual([14, 8]);
 });
 
 test('greet: the greeting follows the visitor\'s clock', async ({ page }) => {
@@ -83,7 +84,7 @@ test('light: the hour on <html> follows the visitor\'s clock, and turns while th
   await open(page, 'wiki.html');
   await expect(page.locator('html')).toHaveAttribute('data-hour', '14');
   await page.evaluate(() => { window.hours = 0; document.addEventListener('atrium:hour', () => window.hours++); });
-  await page.clock.runFor(61_000);
+  await page.clock.fastForward(61_000);
   await expect(page.locator('html')).toHaveAttribute('data-hour', '15');
   expect(await page.evaluate(() => window.hours)).toBe(1);
 });

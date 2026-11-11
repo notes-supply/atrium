@@ -60,8 +60,11 @@ mkdir -p target/browser
 # which throttles the software renderer into slow frames that are not real.
 limit="--cpus=2"
 [ -n "${CPUSET:-}" ] && limit="--cpuset-cpus=$CPUSET"
+# ATRIUM_PROTOTYPE, the prototype's folder, adds the check that the field draws its pixels.
+prototype=""
+[ -n "${ATRIUM_PROTOTYPE:-}" ] && prototype="--volume $ATRIUM_PROTOTYPE:/prototype:ro --env PROTOTYPE=/prototype"
 docker run --rm $limit --memory=4g --init --ipc=host --user "$(id -u):$(id -g)" --env HOME=/tmp \
-  --env OUT=/out/results --volume "$here:$here:ro" --volume "$modules:/node_modules:ro" \
+  $prototype --env OUT=/out/results --volume "$here:$here:ro" --volume "$modules:/node_modules:ro" \
   --volume "$here/target/browser:/out" --workdir "$here/web/ui/tests/browser" \
   mcr.microsoft.com/playwright:v1.64.1-noble \
   node /node_modules/@playwright/test/cli.js test "$@"

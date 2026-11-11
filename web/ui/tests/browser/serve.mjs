@@ -1,5 +1,6 @@
 // Serves the fixtures, the loader and the built bundles, with the server's own CSP, read
-// from crates/atrium/src/middleware.rs so the two cannot drift.
+// from crates/atrium/src/middleware.rs so the two cannot drift. With PROTOTYPE set, also
+// the prototype itself under /prototype/, for the parity check.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
@@ -10,6 +11,7 @@ const csp = source.match(/pub const CSP: &str = "([^;]*;[\s\S]*?)";/)[1].replace
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.wasm': 'application/wasm', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json' };
 
 function file(path) {
+  if (path.startsWith('prototype/') && process.env.PROTOTYPE) return join(process.env.PROTOTYPE, path.slice('prototype/'.length));
   if (path === 'web/loader.js') return join(repo, path);
   if (path.startsWith('web/')) return join(repo, 'target', path);
   return join(repo, 'web/ui/tests/browser/fixtures', path);
