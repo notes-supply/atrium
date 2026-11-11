@@ -142,6 +142,16 @@ impl Copy {
         self.concerns.first().map_or(Want::Rest, Concern::want)
     }
 
+    /// Its state as the pages name it.
+    #[must_use]
+    pub fn state_word(&self) -> &str {
+        if self.state.is_empty() {
+            "not reported"
+        } else {
+            &self.state
+        }
+    }
+
     /// Why it wants you, or what its state means when it does not.
     #[must_use]
     pub fn why(&self, local: &Local) -> String {
@@ -318,7 +328,7 @@ fn dock_card(local: &Local, place: Place, copy: Option<&Copy>, known: &Known<'_>
                     span.dk-why { "Its state comes from the wiki." }
                 },
                 (Known::Known { .. }, Some(copy)) => {
-                    span.dk-state { (mark(Mark::Want(want))) (copy.state) }
+                    span.dk-state { (mark(Mark::Want(want))) (copy.state_word()) }
                     span.dk-why { (copy.why(local)) }
                     dl.dk-data {
                         dt { "seen" } dd { @match copy.seen { Some(seen) => (local.time(seen, &local.ago(seen))), None => "never" } }
@@ -425,7 +435,7 @@ fn machine_section(local: &Local, copy: &Copy, place: Place) -> Markup {
             header.mach-head { h2 #{ "m-" (copy.name) } { (copy.name) } span.dk-role { "holds a folder" } }
             (draw::place(place, want, "vignette"))
             div.mach-state {
-                p.word { (mark(Mark::Want(want))) (if copy.state.is_empty() { "not reported" } else { copy.state.as_str() }) }
+                p.word { (mark(Mark::Want(want))) (copy.state_word()) }
                 p.why { (copy.why(local)) }
             }
             dl.facts {

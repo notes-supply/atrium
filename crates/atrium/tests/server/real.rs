@@ -184,6 +184,26 @@ async fn until_indexed(base: &str, head: &str) {
     }
 }
 
+/// Standard base64 with padding, for the report header.
+fn base64(bytes: &[u8]) -> String {
+    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::new();
+    for chunk in bytes.chunks(3) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0_u32, |n, (i, byte)| n | u32::from(*byte) << (16 - 8 * i));
+        for i in 0..4 {
+            if i <= chunk.len() {
+                out.push(char::from(ALPHABET[(n >> (18 - 6 * i) & 63) as usize]));
+            } else {
+                out.push('=');
+            }
+        }
+    }
+    out
+}
+
 /// The directories and the server the test needs to keep while it runs.
 struct Setup {
     _dirs: [TempDir; 3],
@@ -216,15 +236,10 @@ async fn setup(binary: &str) -> (Atrium, Setup) {
     work.git(&["-c", &header, "push", "-q", &remote, "main"], now);
     let head = work.git(&["rev-parse", "HEAD"], now);
     until_indexed(&mneme.base, head.trim()).await;
-    let report = reqwest::Client::new()
-        .post(format!("{}/git/status", mneme.base))
-        .bearer_auth(TOKEN)
-        .header("content-type", "application/json")
-        .body(include_str!("../../../atrium-wiki/fixtures/report.json"))
-        .send()
-        .await
-        .unwrap();
-    assert_eq!(report.status(), 204);
+    // A report rides on a Git request in a header, as the autosave service sends it.
+    let report = base64(include_str!("../../../atrium-wiki/fixtures/report.json").as_bytes());
+    let carried = format!("http.extraHeader=Mneme-Report: {report}");
+    work.git(&["-c", &header, "-c", &carried, "ls-remote", &remote], now);
     let atrium = Atrium::serve(Running::elsewhere(&mneme.base), &["--viewer", "tailnet"]).await;
     let setup = Setup {
         _dirs: [home, server, clone],
@@ -235,21 +250,56 @@ async fn setup(binary: &str) -> (Atrium, Setup) {
 
 #[tokio::test]
 #[ignore = "needs a mneme binary in ATRIUM_MNEME_BIN: mise run test:mneme"]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one walk through every route, which its output reads as"
+)]
 async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
     let binary = std::env::var("ATRIUM_MNEME_BIN")
         .unwrap_or_else(|_| panic!("set ATRIUM_MNEME_BIN to a mneme binary"));
     let (atrium, _setup) = setup(&binary).await;
 
+    let say = |what: &str, lines: Vec<String>| {
+        println!("── {what}");
+        for line in lines {
+            println!("   {line}");
+        }
+    };
+
+    let home = atrium.get("/").await;
+    assert_eq!(home.status, 200);
+    let sentence = texts(&home.body, "p.sentence");
+    say("GET / sentence", sentence.clone());
+    assert!(sentence[0].contains("blackbox is blocked"), "{sentence:?}");
+    say("GET / places", texts(&home.body, ".dock-card .dk-state"));
+    assert_eq!(
+        attrs(&home.body, ".dock-card", "data-want"),
+        ["2", "0", "2"]
+    );
+    say(
+        "GET / recent changes",
+        texts(&home.body, ".tile.changes li"),
+    );
+    say("GET / this week", texts(&home.body, ".week-note"));
+
     let list = atrium.get("/wiki").await;
     assert_eq!(list.status, 200);
-    assert_eq!(texts(&list.body, "tbody th"), ["Alpha", "Deep", "Home"]);
-    let alpha = attrs(&list.body, "tbody a", "href")[0].clone();
+    say("GET /wiki", texts(&list.body, "tbody tr"));
+    let mut titles = texts(&list.body, "tbody a.ttl");
+    titles.sort();
+    assert_eq!(titles, ["Alpha", "Deep", "Home"]);
+    let alpha = attrs(&list.body, "tbody a.ttl", "href")
+        .into_iter()
+        .zip(texts(&list.body, "tbody a.ttl"))
+        .find(|(_, title)| title == "Alpha")
+        .unwrap()
+        .0;
 
     let index = atrium.get("/wiki/index.md").await;
     assert_eq!(index.status, 303);
     let home_page = atrium.get(index.header("location").unwrap()).await;
     assert_eq!(texts(&home_page.body, "h1"), ["Home"]);
-    let links = attrs(&home_page.body, "article a:not(.anchor)", "href");
+    let links = attrs(&home_page.body, "article.paper > p a", "href");
     assert_eq!(links, ["/wiki/greek-alpha.md", "/wiki/notes/deep.md"]);
     let followed = atrium.get(&links[0]).await;
     assert_eq!(
@@ -257,10 +307,28 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
         Some(alpha.as_str()),
         "the renamed page"
     );
+    let old = atrium.get("/wiki/alpha.md").await;
+    say(
+        "GET /wiki/alpha.md, renamed away",
+        vec![format!(
+            "{} {}",
+            old.status,
+            old.header("location").unwrap_or_default()
+        )],
+    );
+    assert_eq!(
+        old.header("location"),
+        Some(alpha.as_str()),
+        "the path before the rename"
+    );
 
     let page = atrium.get(&alpha).await;
     assert_eq!(page.status, 200);
     assert_eq!(texts(&page.body, "h1"), ["Alpha"]);
+    say(
+        "GET the page",
+        texts(&page.body, ".doc-meta, article.paper > p"),
+    );
     assert!(
         !page.body.contains("<script>alert"),
         "raw HTML is not rendered"
@@ -271,47 +339,64 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
             .any(|href| href.contains("javascript")),
         "the javascript: link is not a link"
     );
-    let text = texts(&page.body, "article p");
+    let text = texts(&page.body, "article.paper p");
     assert!(
         text.contains(&"A Do not click link.".to_owned()),
         "the link's text stays as text: {text:?}"
     );
     assert_eq!(
-        rows(&page.body, "#activity + table tbody tr")[0][..2],
-        ["the last 7 days", "3"]
+        rows(&page.body, "table.windows tbody tr")[0][..2],
+        ["7 days", "3"]
     );
 
     let history = atrium.get(&format!("{alpha}/history")).await;
     assert_eq!(history.status, 200);
-    let events = texts(&history.body, "main ol li");
+    let events = rows(&history.body, "tbody tr");
+    say(
+        "GET history",
+        events.iter().map(|row| row.join(" | ")).collect(),
+    );
     assert_eq!(events.len(), 4);
-    assert!(events[1].contains("renamed from alpha.md"), "{}", events[1]);
+    assert_eq!(events[1][2], "renamedfrom alpha");
 
     let diff = atrium.get(&format!("{alpha}/diff")).await;
     assert_eq!(diff.status, 200);
-    assert_eq!(texts(&diff.body, "ol.diff mark"), ["quiet"]);
+    say("GET diff", texts(&diff.body, "#diff-h, .diff-body p"));
+    let added = texts(&diff.body, ".diff-body ins");
+    assert_eq!(added[0], "quiet", "the changed word, marked");
+    assert!(
+        added.contains(&"<script>alert(1)</script>".to_owned()),
+        "added raw HTML reads as text"
+    );
 
     let search = atrium.get("/wiki/search?q=harbour*").await;
     assert_eq!(search.status, 200);
-    assert_eq!(texts(&search.body, "main ol li > a"), ["Alpha"]);
-    assert_eq!(texts(&search.body, "main ol li mark"), ["harbours"]);
+    say(
+        "GET search harbour*",
+        texts(&search.body, "#find-count, .result-list h3, .snip"),
+    );
+    assert_eq!(texts(&search.body, ".result-list h3"), ["Alpha"]);
+    assert_eq!(texts(&search.body, ".result-list mark"), ["harbours"]);
 
     let machines = atrium.get("/wiki/machines").await;
     assert_eq!(machines.status, 200);
-    let table = rows(&machines.body, "tbody tr");
-    assert_eq!(table[0][..2], ["aeolus", "not reported"]);
+    say(
+        "GET /wiki/machines",
+        texts(
+            &machines.body,
+            "section.mach .mach-head h2, section.mach .word, section.mach .why, .skips li",
+        ),
+    );
     assert_eq!(
-        table[1][..3],
-        [
-            "blackbox",
-            "blocked: a merge is in progress",
-            "no (faf510a)"
-        ]
+        texts(&machines.body, "#blackbox .why"),
+        ["a merge is in progress"]
+    );
+    assert_eq!(
+        texts(&machines.body, "#blackbox .skips code"),
+        ["notes/scan.pdf"]
     );
 
     let changes = atrium.get("/wiki/changes").await;
-    assert_eq!(texts(&changes.body, "main h2").len(), 4, "four days");
-
-    let home_tile = atrium.get("/").await;
-    assert_eq!(home_tile.status, 200);
+    say("GET /wiki/changes", texts(&changes.body, "h2.day"));
+    assert_eq!(texts(&changes.body, "h2.day").len(), 4, "four days");
 }

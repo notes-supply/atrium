@@ -83,7 +83,10 @@ fn row(
                         a href=(read) { "Read" span.vh { " v" (n) } }
                     }
                     @if event.version {
-                        a href=(diff) { "Diff" span.vh { " v" (n.saturating_sub(1)) " to v" (n) } }
+                        a href=(diff) {
+                            "Diff"
+                            span.vh { @if n > 1 { " v" (n - 1) " to v" (n) } @else { " v1" } }
+                        }
                     }
                 }
             }
