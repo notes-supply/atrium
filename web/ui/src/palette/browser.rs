@@ -465,9 +465,11 @@ fn lower(text: &str) -> String {
 /// Fetches the pages once, then renders any list whose field has focus.
 fn load_pages() {
     let Some(url) = SHARED.with_borrow_mut(|shared| {
-        let first = !shared.loading && !shared.pages_url.is_empty();
+        if shared.loading || shared.pages_url.is_empty() {
+            return None;
+        }
         shared.loading = true;
-        first.then(|| shared.pages_url.clone())
+        Some(shared.pages_url.clone())
     }) else {
         return;
     };
