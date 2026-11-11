@@ -28,7 +28,7 @@ description = "Build the palette's Wasm module and glue into target/web, where t
 sources = ["Cargo.lock", "Cargo.toml", "web/**/*"]
 outputs = ["target/web/palette.js", "target/web/palette_bg.wasm"]
 run = """
-set -euo pipefail
+set -eu
 rm -rf target/web target/web-raw
 mkdir -p target/web target/web-raw
 # build-std needs std's own unstable features, so these are the only flags for this build.
@@ -81,7 +81,7 @@ run = ["actionlint", "zizmor --offline .github/workflows"]
 description = "Build the image as localhost/atrium:<commit>, answer one request with it, and scan it with Trivy when Trivy is installed"
 depends = ["build:wasm"]
 run = """{% raw %}
-set -euo pipefail
+set -eu
 tag="localhost/atrium:$(git rev-parse --short HEAD)$(git diff --quiet HEAD -- || echo -dirty)"
 podman build --file Containerfile --tag "$tag" .
 podman image inspect "$tag" --format 'user={{.Config.User}} size={{.Size}}'
