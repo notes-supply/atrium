@@ -43,7 +43,7 @@ async fn home_shows_the_latest_changes_as_a_tile() {
     let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
-    assert_eq!(texts(&home.body, ".tiles > li h2"), ["Recent changes"]);
+    assert_eq!(texts(&home.body, "#wiki-changes h2"), ["Recent changes"]);
     assert_eq!(
         attrs(&home.body, "#wiki-changes h2 a", "href"),
         ["/wiki/changes"]

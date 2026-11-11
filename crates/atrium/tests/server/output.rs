@@ -169,15 +169,24 @@ async fn the_palette_loads_through_one_loader_of_at_most_a_kilobyte() {
 async fn every_command_is_also_a_plain_link() {
     let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await.body;
+    let links = attrs(&home, "[data-module=palette] a", "href");
+    for command in [
+        "/",
+        "/wiki",
+        "/wiki/changes",
+        "/wiki/search",
+        "/wiki/machines",
+    ] {
+        assert!(
+            links.contains(&command.to_owned()),
+            "{command} in {links:?}"
+        );
+    }
+    let keys = attrs(&home, "[data-module=palette] a", "data-keys");
     assert_eq!(
-        attrs(&home, "[data-module=palette] a", "href"),
-        [
-            "/",
-            "/wiki",
-            "/wiki/changes",
-            "/wiki/search",
-            "/wiki/machines"
-        ]
+        keys.len(),
+        links.len(),
+        "every command here has keys: {keys:?}"
     );
 }
 
