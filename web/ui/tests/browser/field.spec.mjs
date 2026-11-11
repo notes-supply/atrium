@@ -143,6 +143,30 @@ test('field: the open palette pulls the lattice to itself', async ({ page }) => 
   expect(under.dots).toBeGreaterThan(whole.dots * 2);
 });
 
+// How much denser the lattice is under the open palette than across the whole canvas, once
+// the springs have eased it there. Each sample pauses the field, so it resumes after.
+async function pulled(page) {
+  const palette = await page.locator('dialog.palette').boundingBox();
+  const box = [Math.round(palette.x), Math.round(palette.y), Math.round(palette.width), Math.round(palette.height)];
+  await expect.poll(async () => {
+    const [whole, under] = await sample(page, [box]);
+    await page.evaluate(() => window.__field.pause(false));
+    return under.dots / whole.dots;
+  }, 'denser under the palette').toBeGreaterThan(2);
+}
+
+test('field: a palette opened before the field starts pulls it too', async ({ page }) => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route(/\/field_bg\.[0-9a-f]+\.wasm$/, async (route) => { await held; await route.continue(); });
+  await open(page, 'wiki', 'perf');
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('dialog.palette')).toBeVisible();
+  release();
+  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
+  await pulled(page);
+});
+
 // The field is still under reduced motion: no time, no drift, no entrance. So the
 // prototype's JavaScript and this Wasm must draw the same pixels on the prototype's page.
 test('field: draws the prototype\'s pixels', async ({ browser }) => {
