@@ -15,6 +15,7 @@ mod palette;
 mod prefs;
 mod preview;
 mod resume;
+mod swap;
 mod toc;
 
 type Mount = fn(&Element) -> Result<(), JsValue>;
@@ -46,6 +47,7 @@ const MODULES: &[(&str, Mount)] = &[
         prefs::mount(element);
         Ok(())
     }),
+    ("swap", swap::mount),
     ("toc", toc::mount),
 ];
 
