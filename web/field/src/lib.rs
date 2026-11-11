@@ -190,7 +190,11 @@ impl Field {
             ids: WeakMap::new(),
             next_id: 0,
             springs: Vec::new(),
-            palette: None,
+            // The palette says when it opens, but it may have opened before this bundle started.
+            palette: document
+                .query_selector("dialog.palette[open]")
+                .ok()
+                .flatten(),
             pointer: Pointer {
                 x: -1e4,
                 y: -1e4,
