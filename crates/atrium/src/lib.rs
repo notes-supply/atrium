@@ -40,6 +40,12 @@ pub struct Config {
         default_value = "localhost"
     )]
     pub allowed_hosts: Vec<String>,
+    /// Mneme's base URL, such as `http://mneme:8080`.
+    #[arg(long, env = "ATRIUM_MNEME_URL")]
+    pub mneme_url: String,
+    /// How long one call to Mneme may take, in milliseconds.
+    #[arg(long, env = "ATRIUM_MNEME_TIMEOUT_MS", default_value_t = 3000)]
+    pub mneme_timeout_ms: u64,
 }
 
 /// Serves until SIGTERM or Ctrl-C, then finishes the requests in flight.
@@ -49,7 +55,7 @@ pub struct Config {
 /// Fails when the address cannot be bound or the server stops on an I/O error.
 pub async fn run(config: Config) -> Result<()> {
     let mut terminate = signal(SignalKind::terminate()).context("watching for SIGTERM")?;
-    let router = app(&config);
+    let router = app(&config)?;
     let listener = TcpListener::bind(config.addr)
         .await
         .with_context(|| format!("binding {}", config.addr))?;
@@ -70,10 +76,14 @@ pub async fn run(config: Config) -> Result<()> {
 }
 
 /// The whole site for the viewer `config` names, as one router.
-pub fn app(config: &Config) -> Router {
+///
+/// # Errors
+///
+/// Fails when a feature cannot be built from the configuration.
+pub fn app(config: &Config) -> Result<Router> {
     let mut assets = Assets::default();
     let stylesheet = assets.add("atrium", "css", atrium_ui::STYLESHEET.as_bytes());
-    let site = Arc::new(Site::new(features::registry(), config.viewer));
+    let site = Arc::new(Site::new(features::registry(config)?, config.viewer));
     let chrome = Arc::new(Chrome {
         nav: site.nav(),
         commands: site.commands(),
@@ -98,11 +108,11 @@ pub fn app(config: &Config) -> Router {
             Arc::from(config.allowed_hosts.as_slice()),
             middleware::known_host,
         ));
-    Router::new()
+    Ok(Router::new()
         .route("/healthz", get(|| async { "ok" }))
         .merge(pages)
         .layer(axum::middleware::from_fn(middleware::headers))
-        .layer(axum::middleware::from_fn(middleware::request_log))
+        .layer(axum::middleware::from_fn(middleware::request_log)))
 }
 
 async fn not_found(shell: Shell) -> Response {

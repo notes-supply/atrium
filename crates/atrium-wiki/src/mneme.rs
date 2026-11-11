@@ -289,8 +289,7 @@ pub struct Machine {
 }
 
 /// What a listing of pages is sorted by.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
     Title,
     Updated,
@@ -335,9 +334,19 @@ impl Sort {
     }
 }
 
+impl FromStr for Sort {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|sort| sort.name() == name)
+            .ok_or_else(|| format!("unknown sort {name:?}"))
+    }
+}
+
 /// Ascending or descending.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
-#[serde(rename_all = "lowercase")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Order {
     Asc,
     Desc,
@@ -360,6 +369,17 @@ impl Order {
             Self::Asc => Self::Desc,
             Self::Desc => Self::Asc,
         }
+    }
+}
+
+impl FromStr for Order {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        [Self::Asc, Self::Desc]
+            .into_iter()
+            .find(|order| order.name() == name)
+            .ok_or_else(|| format!("unknown order {name:?}"))
     }
 }
 

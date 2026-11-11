@@ -7,4 +7,6 @@ mod access;
 mod html;
 mod output;
 mod process;
+mod real;
 mod support;
+mod wiki;

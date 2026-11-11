@@ -28,6 +28,10 @@ description = "Run the tests against a stub that serves Mneme's example response
 wait_for = ["check:clippy"]
 run = "cargo nextest run --locked --workspace --no-tests=fail"
 
+[tasks."test:mneme"]
+description = "Run the test against a real mneme serve; ATRIUM_MNEME_BIN names the binary"
+run = "cargo nextest run --locked --workspace --run-ignored only --no-tests=fail"
+
 [tasks."check:advisories"]
 description = "Fail on known vulnerabilities in the dependency tree"
 run = "cargo deny --locked {% if env.MISE_OFFLINE %}--offline {% endif %}check advisories"

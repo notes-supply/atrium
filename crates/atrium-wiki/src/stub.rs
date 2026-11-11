@@ -36,6 +36,15 @@ pub struct Running {
 }
 
 impl Running {
+    /// A Mneme that runs elsewhere, at `base`. Its requests are not recorded.
+    #[must_use]
+    pub fn elsewhere(base: &str) -> Self {
+        Self {
+            base: base.to_owned(),
+            requests: Arc::default(),
+        }
+    }
+
     /// Every request so far, as path and query.
     #[must_use]
     pub fn requests(&self) -> Vec<String> {

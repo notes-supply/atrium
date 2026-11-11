@@ -1,5 +1,7 @@
-//! Atrium in this process on a free port, and plain HTTP to it.
+//! Atrium in this process on a free port, in front of a stand-in for Mneme, and plain HTTP
+//! to it.
 
+use atrium_wiki::stub::{self, Running, Stub};
 use clap::Parser;
 use reqwest::header::HeaderMap;
 use reqwest::{Client, redirect};
@@ -7,6 +9,7 @@ use tokio::net::TcpListener;
 
 pub struct Atrium {
     pub url: String,
+    pub mneme: Running,
     client: Client,
 }
 
@@ -23,33 +26,42 @@ impl Reply {
 }
 
 impl Atrium {
-    /// Serves a tailnet listener with `args` added to the flags.
-    pub async fn tailnet(args: &[&str]) -> Self {
-        Self::start(&[&["--viewer", "tailnet"], args].concat()).await
+    /// A tailnet listener in front of Mneme's example responses.
+    pub async fn tailnet() -> Self {
+        Self::start(Stub::Fixtures, &["--viewer", "tailnet"]).await
     }
 
-    /// Serves with exactly `args`, besides the address and the allowed host.
-    pub async fn start(args: &[&str]) -> Self {
-        let flags = [
-            &[
-                "atrium",
-                "--addr",
-                "127.0.0.1:0",
-                "--allowed-hosts",
-                "127.0.0.1",
-            ],
-            args,
+    /// A listener with `args` added to the flags, in front of `mneme`.
+    pub async fn start(mneme: Stub, args: &[&str]) -> Self {
+        let mneme = stub::serve(mneme).await;
+        Self::serve(mneme, args)
+    }
+
+    /// A listener with `args` added to the flags, in front of a running Mneme.
+    pub fn serve(mneme: Running, args: &[&str]) -> Self {
+        let fixed = [
+            "atrium",
+            "--addr",
+            "127.0.0.1:0",
+            "--allowed-hosts",
+            "127.0.0.1",
+            "--mneme-timeout-ms",
+            "1000",
+            "--mneme-url",
+            &mneme.base,
         ];
-        let config = atrium::Config::try_parse_from(flags.concat()).unwrap();
-        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let config = atrium::Config::try_parse_from([&fixed[..], args].concat()).unwrap();
+        let app = atrium::app(&config).unwrap();
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
-        let app = atrium::app(&config);
+        let listener = TcpListener::from_std(listener).unwrap();
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         let client = Client::builder()
             .redirect(redirect::Policy::none())
             .build()
             .unwrap();
-        Self { url, client }
+        Self { url, mneme, client }
     }
 
     pub async fn get(&self, path: &str) -> Reply {

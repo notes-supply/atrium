@@ -4,13 +4,22 @@
 mod home;
 
 use std::sync::Arc;
+use std::time::Duration;
 
+use anyhow::Result;
 use atrium_core::{Command, Feature, NavEntry, Tile, Viewer};
+use atrium_wiki::Wiki;
 use futures_util::future::join_all;
 
+use crate::Config;
+
 /// Every feature, in the order the navigation lists them.
-pub fn registry() -> Vec<Arc<dyn Feature>> {
-    vec![Arc::new(home::Home)]
+pub fn registry(config: &Config) -> Result<Vec<Arc<dyn Feature>>> {
+    let timeout = Duration::from_millis(config.mneme_timeout_ms);
+    Ok(vec![
+        Arc::new(home::Home),
+        Arc::new(Wiki::new(&config.mneme_url, timeout)?),
+    ])
 }
 
 /// The registry as one listener's viewer sees it.
@@ -76,15 +85,27 @@ mod tests {
             .try_for_each(|name| seen.insert(name).then_some(()).ok_or(name))
     }
 
+    fn config() -> Config {
+        use clap::Parser;
+        Config::try_parse_from([
+            "atrium",
+            "--viewer",
+            "tailnet",
+            "--mneme-url",
+            "http://mneme",
+        ])
+        .unwrap()
+    }
+
     #[test]
     fn feature_ids_are_unique() {
-        let features = registry();
+        let features = registry(&config()).unwrap();
         assert_eq!(unique(features.iter().map(|feature| feature.id())), Ok(()));
     }
 
     #[test]
     fn command_keys_are_unique() {
-        let site = Site::new(registry(), Viewer::Tailnet);
+        let site = Site::new(registry(&config()).unwrap(), Viewer::Tailnet);
         let commands = site.commands();
         assert_eq!(
             unique(commands.iter().filter_map(|command| command.keys)),

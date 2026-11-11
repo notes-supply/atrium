@@ -11,7 +11,14 @@ use serde_json::Value;
 #[tokio::test]
 async fn binary_logs_each_request_and_stops_on_sigterm() {
     let mut child = Command::new(env!("CARGO_BIN_EXE_atrium"))
-        .args(["--addr", "127.0.0.1:0", "--viewer", "tailnet"])
+        .args([
+            "--addr",
+            "127.0.0.1:0",
+            "--viewer",
+            "tailnet",
+            "--mneme-url",
+            "http://127.0.0.1:9",
+        ])
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();

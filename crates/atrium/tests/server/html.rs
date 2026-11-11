@@ -139,3 +139,23 @@ fn the_check_sees_javascript_links() {
         &GOOD.replace("BODY", r#"<a href="javascript:x()">x</a>"#),
     );
 }
+
+/// The cells of every table row `selector` picks, each cell's text with whitespace collapsed.
+pub fn rows(body: &str, selector: &str) -> Vec<Vec<String>> {
+    let page = Html::parse_document(body);
+    let cells = Selector::parse("th, td").unwrap();
+    select(&page, selector)
+        .into_iter()
+        .map(|row| {
+            row.select(&cells)
+                .map(|cell| {
+                    cell.text()
+                        .collect::<String>()
+                        .split_whitespace()
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .collect()
+        })
+        .collect()
+}

@@ -1,11 +1,13 @@
 //! A listener serves one kind of viewer, and private features exist only for the tailnet.
 
+use atrium_wiki::stub::Stub;
+
 use crate::html::{attrs, texts};
 use crate::support::Atrium;
 
 #[tokio::test]
 async fn an_anonymous_listener_refuses_every_private_route() {
-    let atrium = Atrium::start(&["--viewer", "anonymous"]).await;
+    let atrium = Atrium::start(Stub::Fixtures, &["--viewer", "anonymous"]).await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 404);
     assert_eq!(home.body, atrium.get("/no-such-page").await.body);
@@ -13,7 +15,7 @@ async fn an_anonymous_listener_refuses_every_private_route() {
 
 #[tokio::test]
 async fn an_anonymous_listener_links_no_private_feature() {
-    let atrium = Atrium::start(&["--viewer", "anonymous"]).await;
+    let atrium = Atrium::start(Stub::Fixtures, &["--viewer", "anonymous"]).await;
     let page = atrium.get("/no-such-page").await.body;
     assert_eq!(attrs(&page, "header nav a", "href"), Vec::<String>::new());
     assert_eq!(attrs(&page, "footer nav a", "href"), Vec::<String>::new());
@@ -21,7 +23,7 @@ async fn an_anonymous_listener_links_no_private_feature() {
 
 #[tokio::test]
 async fn the_tailnet_listener_serves_home_and_links_it() {
-    let atrium = Atrium::tailnet(&[]).await;
+    let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
     assert_eq!(texts(&home.body, "h1"), ["Atrium"]);
@@ -34,6 +36,12 @@ async fn the_tailnet_listener_serves_home_and_links_it() {
 #[tokio::test]
 async fn the_viewer_must_be_named() {
     use clap::Parser;
-    assert!(atrium::Config::try_parse_from(["atrium"]).is_err());
-    assert!(atrium::Config::try_parse_from(["atrium", "--viewer", "everyone"]).is_err());
+    let parse = |viewer: &[&str]| {
+        atrium::Config::try_parse_from(
+            [&["atrium", "--mneme-url", "http://mneme"], viewer].concat(),
+        )
+    };
+    assert!(parse(&[]).is_err());
+    assert!(parse(&["--viewer", "everyone"]).is_err());
+    assert!(parse(&["--viewer", "anonymous"]).is_ok());
 }

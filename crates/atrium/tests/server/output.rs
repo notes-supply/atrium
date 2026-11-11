@@ -4,7 +4,26 @@ use crate::html::{attrs, check};
 use crate::support::Atrium;
 
 /// One address per route, with the status each answers.
-const ROUTES: &[(&str, u16)] = &[("/", 200), ("/no-such-page", 404)];
+const ROUTES: &[(&str, u16)] = &[
+    ("/", 200),
+    ("/no-such-page", 404),
+    ("/wiki", 200),
+    ("/wiki?sort=churn&order=asc", 200),
+    ("/wiki?sort=colour", 400),
+    ("/wiki/page/4226c96dd1386f3a", 200),
+    ("/wiki/page/0123456789abcdef", 404),
+    ("/wiki/page/4226c96dd1386f3a/history", 200),
+    (
+        "/wiki/page/4226c96dd1386f3a/at/faf510a1fb457f1af5496ca64dea77ed68ddb2f8",
+        200,
+    ),
+    ("/wiki/page/4226c96dd1386f3a/diff", 200),
+    ("/wiki/changes", 200),
+    ("/wiki/search", 200),
+    ("/wiki/search?q=harbours", 200),
+    ("/wiki/search?q=%22open", 400),
+    ("/wiki/machines", 200),
+];
 
 const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
     style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; \
@@ -12,7 +31,7 @@ const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
 
 #[tokio::test]
 async fn every_page_keeps_the_output_rules() {
-    let atrium = Atrium::tailnet(&[]).await;
+    let atrium = Atrium::tailnet().await;
     for (path, status) in ROUTES {
         let reply = atrium.get(path).await;
         assert_eq!(reply.status, *status, "{path}");
@@ -29,7 +48,7 @@ async fn every_page_keeps_the_output_rules() {
 
 #[tokio::test]
 async fn assets_have_hashed_names_and_are_immutable() {
-    let atrium = Atrium::tailnet(&[]).await;
+    let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await.body;
     let stylesheet = &attrs(&home, "link[rel=stylesheet]", "href")[0];
     let name = stylesheet.strip_prefix("/assets/").unwrap();
@@ -53,7 +72,7 @@ async fn assets_have_hashed_names_and_are_immutable() {
 
 #[tokio::test]
 async fn a_page_answers_if_none_match() {
-    let atrium = Atrium::tailnet(&[]).await;
+    let atrium = Atrium::tailnet().await;
     let first = atrium.get("/").await;
     let tag = first.header("etag").unwrap();
     assert!(
@@ -69,7 +88,7 @@ async fn a_page_answers_if_none_match() {
 
 #[tokio::test]
 async fn an_unknown_host_is_refused_except_for_health_checks() {
-    let atrium = Atrium::tailnet(&[]).await;
+    let atrium = Atrium::tailnet().await;
     let refused = atrium.get_with("/", &[("host", "evil.example")]).await;
     assert_eq!(refused.status, 421);
     let missing = atrium

@@ -10,16 +10,18 @@ workspace = true
 
 [features]
 # A stand-in for Mneme that serves its example responses, for tests.
-stub = ["dep:axum", "dep:tokio"]
+stub = []
 
 [dependencies]
-axum = { workspace = true, optional = true }
+atrium-core.workspace = true
+atrium-ui.workspace = true
+axum.workspace = true
+comrak.workspace = true
+maud.workspace = true
+percent-encoding.workspace = true
 reqwest = { workspace = true, features = ["query"] }
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
+serde_urlencoded.workspace = true
 thiserror.workspace = true
-tokio = { workspace = true, optional = true }
-
-[dev-dependencies]
-axum.workspace = true
 tokio.workspace = true
