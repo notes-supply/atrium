@@ -1,57 +1,83 @@
-//! The command palette. The page lists every command as a plain link inside the element
-//! marked `data-module="palette"`; this module reads those links, opens a filtered copy of
-//! them in a dialog on Ctrl+K or Cmd+K, and follows a command when its keys are typed.
+//! The palette: jump anywhere by name. Ctrl or Cmd K opens it as a dialog from any page; on
+//! home the command line is the same list, inline. Enter on a query with no page by that
+//! name searches the wiki. Every destination is also a plain link on the page.
 //!
-//! The matching and the key sequences are plain functions, tested natively. The browser
-//! module wires them to the page.
+//! The matching and the marking are plain functions, tested natively. The browser module
+//! wires them to the page.
 
 mod browser;
 
-pub use browser::mount;
+pub use browser::{mount, toggle};
 
-/// Whether `label` matches `query`: every word of the query appears in it, without case.
-#[must_use]
-pub fn matches(query: &str, label: &str) -> bool {
-    let label = label.to_lowercase();
-    query
-        .split_whitespace()
-        .all(|word| label.contains(&word.to_lowercase()))
+/// Where a query matched a label, and how well.
+#[derive(Debug, PartialEq)]
+pub struct Hit {
+    pub score: f64,
+    /// The index of each matched character in the label.
+    pub at: Vec<usize>,
 }
 
-/// What a key typed outside a text field does.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Step {
-    /// Run the command at this index.
-    Run(usize),
-    /// Wait for the next key, with these keys typed so far.
-    Wait(String),
-    /// Nothing: the keys start no command.
-    Nothing,
+/// Whether every character of `query`, spaces aside, appears in `label` in order. Runs of
+/// consecutive characters and characters that start a word score higher, and a shorter
+/// label wins a tie. Both are already lowercase.
+#[must_use]
+pub fn find(query: &str, label: &str) -> Option<Hit> {
+    if query.is_empty() {
+        return Some(Hit {
+            score: 1.0,
+            at: Vec::new(),
+        });
+    }
+    let label: Vec<char> = label.chars().collect();
+    let (mut from, mut run, mut score) = (0, 0.0, 0.0);
+    let mut at = Vec::new();
+    for wanted in query.chars().filter(|c| *c != ' ') {
+        let found = from + label.get(from..)?.iter().position(|c| *c == wanted)?;
+        run = if found == from { run + 1.0 } else { 0.0 };
+        let word_start = found == 0 || label[found - 1] == ' ';
+        score += 1.0 + run * 2.0 + if word_start { 3.0 } else { 0.0 };
+        at.push(found);
+        from = found + 1;
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "labels are far shorter than 2^52"
+    )]
+    let length = label.len() as f64;
+    Some(Hit {
+        score: score - length * 0.01,
+        at,
+    })
 }
 
-/// The step after `key`, when `typed` are the keys typed just before it and `sequences` are
-/// each command's keys, such as `g w`, in command order. A key that cannot continue `typed`
-/// may start a sequence of its own.
-#[must_use]
-pub fn step(typed: &str, key: &str, sequences: &[Option<&str>]) -> Step {
-    let continued = (!typed.is_empty()).then(|| format!("{typed} {key}"));
-    for candidate in continued.into_iter().chain([key.to_owned()]) {
-        if let Some(index) = sequences
-            .iter()
-            .position(|keys| *keys == Some(candidate.as_str()))
-        {
-            return Step::Run(index);
-        }
-        let prefix = format!("{candidate} ");
-        if sequences
-            .iter()
-            .flatten()
-            .any(|keys| keys.starts_with(&prefix))
-        {
-            return Step::Wait(candidate);
+/// Appends `text` to `html`, escaped for an element or a quoted attribute.
+pub fn escape(text: &str, html: &mut String) {
+    for c in text.chars() {
+        match c {
+            '&' => html.push_str("&amp;"),
+            '<' => html.push_str("&lt;"),
+            '>' => html.push_str("&gt;"),
+            '"' => html.push_str("&quot;"),
+            _ => html.push(c),
         }
     }
-    Step::Nothing
+}
+
+/// Appends `label` to `html` with the characters at `at` in bold, one `<b>` per run.
+pub fn mark(label: &str, at: &[usize], html: &mut String) {
+    let mut bold = false;
+    let mut buffer = [0; 4];
+    for (index, c) in label.chars().enumerate() {
+        let hit = at.contains(&index);
+        if hit != bold {
+            html.push_str(if hit { "<b>" } else { "</b>" });
+            bold = hit;
+        }
+        escape(c.encode_utf8(&mut buffer), html);
+    }
+    if bold {
+        html.push_str("</b>");
+    }
 }
 
 #[cfg(test)]
@@ -59,25 +85,41 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_word_must_appear_without_case() {
-        assert!(matches("", "Recent changes"));
-        assert!(matches("CHAN rec", "Recent changes"));
-        assert!(!matches("changes wiki", "Recent changes"));
-    }
-
-    const KEYS: [Option<&str>; 4] = [Some("g h"), None, Some("g w"), Some("/")];
-
-    #[test]
-    fn a_sequence_runs_its_command() {
-        assert_eq!(step("", "g", &KEYS), Step::Wait("g".to_owned()));
-        assert_eq!(step("g", "w", &KEYS), Step::Run(2));
-        assert_eq!(step("", "/", &KEYS), Step::Run(3));
+    fn an_empty_query_matches_everything() {
+        assert_eq!(
+            find("", "anything"),
+            Some(Hit {
+                score: 1.0,
+                at: vec![]
+            })
+        );
     }
 
     #[test]
-    fn a_key_that_breaks_a_sequence_can_start_one() {
-        assert_eq!(step("g", "x", &KEYS), Step::Nothing);
-        assert_eq!(step("g", "g", &KEYS), Step::Wait("g".to_owned()));
-        assert_eq!(step("", "w", &KEYS), Step::Nothing);
+    fn the_characters_must_appear_in_order() {
+        assert_eq!(
+            find("cor", "keyboard build: corne v4").unwrap().at,
+            [16, 17, 18]
+        );
+        assert_eq!(find("c v", "corne v4").unwrap().at, [0, 6]);
+        assert!(find("rc", "corne").is_none());
+        assert!(find("x", "corne").is_none());
+    }
+
+    #[test]
+    fn word_starts_and_runs_rank_first() {
+        let start = find("cor", "corne").unwrap().score;
+        let inside = find("cor", "decorne").unwrap().score;
+        let scattered = find("cor", "cxoxr").unwrap().score;
+        assert!(start > inside, "{start} > {inside}");
+        assert!(inside > scattered, "{inside} > {scattered}");
+        assert!(find("a", "ab").unwrap().score > find("a", "abc").unwrap().score);
+    }
+
+    #[test]
+    fn marks_each_run_once_and_escapes() {
+        let mut html = String::new();
+        mark("a<b&c", &[0, 1, 4], &mut html);
+        assert_eq!(html, "<b>a&lt;</b>b&amp;<b>c</b>");
     }
 }

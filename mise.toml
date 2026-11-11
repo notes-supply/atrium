@@ -48,6 +48,25 @@ for bundle in ui field; do
 done
 """
 
+[tasks."test:browser"]
+description = "Drive every browser module in Chromium, in Playwright's image; ATRIUM_PLAYWRIGHT_MODULES names a node_modules with @playwright/test 1.64.1"
+depends = ["build:wasm"]
+run = """
+set -eu
+modules="${ATRIUM_PLAYWRIGHT_MODULES:?a node_modules folder that holds @playwright/test 1.64.1}"
+here="$(pwd)"
+mkdir -p target/browser
+# Two CPUs and 4 GB, so it runs beside other work; CPUSET pins cores instead of a quota,
+# which throttles the software renderer into slow frames that are not real.
+limit="--cpus=2"
+[ -n "${CPUSET:-}" ] && limit="--cpuset-cpus=$CPUSET"
+docker run --rm $limit --memory=4g --init --ipc=host --user "$(id -u):$(id -g)" --env HOME=/tmp \
+  --env OUT=/out/results --volume "$here:$here:ro" --volume "$modules:/node_modules:ro" \
+  --volume "$here/target/browser:/out" --workdir "$here/web/ui/tests/browser" \
+  mcr.microsoft.com/playwright:v1.64.1-noble \
+  node /node_modules/@playwright/test/cli.js test "$@"
+"""
+
 [tasks."check:fmt"]
 description = "Check formatting"
 run = "cargo fmt --all -- --check"

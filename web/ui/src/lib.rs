@@ -4,12 +4,22 @@
 use wasm_bindgen::prelude::*;
 use web_sys::Element;
 
+mod dom;
+mod keys;
 mod palette;
+mod prefs;
 
 type Mount = fn(&Element) -> Result<(), JsValue>;
 
 /// Each module by the name pages give it in `data-module`.
-const MODULES: &[(&str, Mount)] = &[("palette", palette::mount)];
+const MODULES: &[(&str, Mount)] = &[
+    ("keys", keys::mount),
+    ("palette", palette::mount),
+    ("prefs", |element| {
+        prefs::mount(element);
+        Ok(())
+    }),
+];
 
 /// Mounts every module the page names.
 ///

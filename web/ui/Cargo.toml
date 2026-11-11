@@ -12,17 +12,34 @@ workspace = true
 wasm-bindgen.workspace = true
 web-sys = { workspace = true, features = [
   "console",
+  "CustomEvent",
+  "CustomEventInit",
   "Document",
   "DomTokenList",
+  "DomRect",
+  "DomRectList",
   "Element",
   "Event",
   "EventTarget",
+  "FocusEvent",
+  "FocusOptions",
   "HtmlDialogElement",
+  "HtmlDocument",
   "HtmlElement",
   "HtmlInputElement",
   "KeyboardEvent",
   "Location",
+  "MediaQueryList",
+  "Navigator",
   "Node",
   "NodeList",
+  "Response",
+  "ScrollBehavior",
+  "ScrollIntoViewOptions",
+  "ScrollLogicalPosition",
+  "UrlSearchParams",
   "Window",
 ] }
+
+[dev-dependencies]
+brotli = { version = "9.1.1", default-features = false, features = ["std"] }

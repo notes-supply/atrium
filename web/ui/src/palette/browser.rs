@@ -1,195 +1,505 @@
-//! The palette's wiring to the page: a `<dialog>` with a filter field and a copy of the
-//! page's command links, opened by Ctrl+K or Cmd+K, and the key sequences outside it.
+//! The palette's wiring to the page: the dialog, the inline command line on home, and the
+//! list of destinations they share.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, Element, HtmlDialogElement, HtmlElement, HtmlInputElement, KeyboardEvent};
+use web_sys::js_sys::{self, Array, JsString, Reflect};
+use web_sys::{
+    Element, HtmlDialogElement, HtmlElement, HtmlInputElement, KeyboardEvent,
+    ScrollIntoViewOptions, ScrollLogicalPosition,
+};
 
-use super::{Step, matches, step};
+use super::{Hit, escape, find, mark};
+use crate::{dom, prefs};
 
-/// Keys typed further apart than this many milliseconds start a new sequence.
-const PAUSE_MS: f64 = 1500.0;
+const SETTINGS: &str = "Settings";
 
-struct Command {
-    label: String,
-    keys: Option<String>,
-    href: String,
-    /// The command's item in the dialog's list.
-    item: Element,
-    link: HtmlElement,
+#[derive(Clone)]
+enum Action {
+    Go(String),
+    Theme,
+    Intensity(&'static str),
 }
 
-struct Palette {
-    document: Document,
-    dialog: HtmlDialogElement,
+#[derive(Clone)]
+struct Item {
+    group: &'static str,
+    title: String,
+    /// A second text the query may match, such as a page's path.
+    sub: String,
+    /// The hint at the row's end: a key, a time, or whether a setting is on.
+    hint: String,
+    action: Action,
+}
+
+/// One list of destinations, in the dialog or inline.
+struct Engine {
     input: HtmlInputElement,
-    commands: Vec<Command>,
-    typed: String,
-    last_key_at: f64,
+    list: Element,
+    inline: bool,
+    /// The search page, which a query with no page by that name goes to.
+    search: String,
+    shown: Vec<Item>,
+    selected: usize,
 }
 
-/// Builds the palette from the command links in `source`.
-pub fn mount(source: &Element) -> Result<(), JsValue> {
-    let document = web_sys::window()
-        .ok_or("no window")?
-        .document()
-        .ok_or("no document")?;
-    let dialog: HtmlDialogElement = document.create_element("dialog")?.dyn_into()?;
-    dialog.set_class_name("palette");
-    dialog.set_attribute("aria-label", "Commands")?;
-    let input: HtmlInputElement = document.create_element("input")?.dyn_into()?;
-    input.set_type("search");
-    input.set_attribute("aria-label", "Filter the commands")?;
-    input.set_attribute("autocomplete", "off")?;
-    let list = document.create_element("ul")?;
-    dialog.append_child(&input)?;
-    dialog.append_child(&list)?;
+#[derive(Default)]
+struct Shared {
+    /// The wiki's pages, once loaded from the URL in a palette element's `data-pages`.
+    pages: Vec<Item>,
+    loading: bool,
+    engines: Vec<Rc<RefCell<Engine>>>,
+    dialog: Option<(HtmlDialogElement, Rc<RefCell<Engine>>)>,
+    /// The first palette link's address, the search page.
+    search: String,
+    pages_url: String,
+    bound: bool,
+}
 
-    let links = source.query_selector_all("a[href]")?;
-    let mut commands = Vec::new();
-    for index in 0..links.length() {
-        let Some(original) = links.item(index) else {
-            continue;
-        };
-        let link: HtmlElement = original.clone_node_with_deep(true)?.dyn_into()?;
-        let item = document.create_element("li")?;
-        item.append_child(&link)?;
-        list.append_child(&item)?;
-        commands.push(Command {
-            label: link.text_content().unwrap_or_default(),
-            keys: link.get_attribute("data-keys"),
-            href: link.get_attribute("href").unwrap_or_default(),
-            item,
-            link,
+thread_local! {
+    static SHARED: RefCell<Shared> = RefCell::default();
+}
+
+/// A link or button opens the dialog; any other element is the inline command line.
+pub fn mount(element: &Element) -> Result<(), JsValue> {
+    let first = SHARED.with_borrow_mut(|shared| {
+        if shared.pages_url.is_empty()
+            && let Some(url) = element.get_attribute("data-pages")
+        {
+            shared.pages_url = url;
+        }
+        !std::mem::replace(&mut shared.bound, true)
+    });
+    if first {
+        let document = dom::document().ok_or("no document")?;
+        dom::on(&document, "keydown", |event| {
+            let key = event.unchecked_ref::<KeyboardEvent>();
+            if (key.meta_key() || key.ctrl_key()) && key.key().eq_ignore_ascii_case("k") {
+                event.prevent_default();
+                toggle();
+            }
         });
     }
-    document.body().ok_or("no body")?.append_child(&dialog)?;
-
-    let palette = Rc::new(RefCell::new(Palette {
-        document: document.clone(),
-        dialog,
-        input: input.clone(),
-        commands,
-        typed: String::new(),
-        last_key_at: f64::NEG_INFINITY,
-    }));
-    let keys = Rc::clone(&palette);
-    let on_key = Closure::<dyn FnMut(KeyboardEvent)>::new(move |event: KeyboardEvent| {
-        let _ = keys.borrow_mut().key(&event);
+    if element.matches("a, button")? {
+        SHARED.with_borrow_mut(|shared| {
+            if shared.search.is_empty() {
+                shared.search = element.get_attribute("href").unwrap_or_default();
+            }
+        });
+        dom::on(element, "click", |event| {
+            event.prevent_default();
+            open();
+        });
+        return Ok(());
+    }
+    let input: HtmlInputElement = element
+        .query_selector("input")?
+        .ok_or("no input")?
+        .dyn_into()?;
+    let list = element.query_selector(".cmd-list")?.ok_or("no list")?;
+    let search = element
+        .query_selector("form")?
+        .and_then(|form| form.get_attribute("action"))
+        .unwrap_or_default();
+    let engine = Engine::new(&input, &list, true, search);
+    let show = {
+        let (list, input) = (list.clone(), input.clone());
+        move |on: bool| {
+            let _ = list.toggle_attribute_with_force("hidden", !on);
+            let _ = input.set_attribute("aria-expanded", if on { "true" } else { "false" });
+        }
+    };
+    let (focused, shown) = (Rc::clone(&engine), show.clone());
+    dom::on(&input, "focus", move |_| {
+        focused.borrow_mut().render();
+        shown(true);
     });
-    document.add_event_listener_with_callback("keydown", on_key.as_ref().unchecked_ref())?;
-    // The listeners live as long as the page.
-    on_key.forget();
-    let on_input = Closure::<dyn FnMut()>::new(move || palette.borrow().filter());
-    input.add_event_listener_with_callback("input", on_input.as_ref().unchecked_ref())?;
-    on_input.forget();
+    let shown = show.clone();
+    dom::on(&input, "input", move |_| shown(true));
+    let scope = element.clone();
+    dom::on(element, "focusout", move |event| {
+        let next = event
+            .unchecked_ref::<web_sys::FocusEvent>()
+            .related_target()
+            .and_then(|target| target.dyn_into::<web_sys::Node>().ok());
+        if !scope.contains(next.as_ref()) {
+            show(false);
+        }
+    });
     Ok(())
 }
 
-impl Palette {
-    fn key(&mut self, event: &KeyboardEvent) -> Result<(), JsValue> {
-        let key = event.key();
-        let chord = event.ctrl_key() || event.meta_key();
-        if chord && key.eq_ignore_ascii_case("k") {
+/// Opens the dialog, or closes it when it is open.
+pub fn toggle() {
+    let open_now = SHARED.with_borrow(|shared| {
+        shared
+            .dialog
+            .as_ref()
+            .is_some_and(|(dialog, _)| dialog.open())
+    });
+    if open_now {
+        close_dialog();
+    } else {
+        open();
+    }
+}
+
+fn close_dialog() {
+    if let Some(dialog) =
+        SHARED.with_borrow(|shared| shared.dialog.as_ref().map(|(d, _)| d.clone()))
+    {
+        dialog.close();
+    }
+}
+
+fn open() {
+    let _ = try_open();
+}
+
+fn try_open() -> Result<(), JsValue> {
+    let existing = SHARED.with_borrow(|shared| shared.dialog.clone());
+    let (dialog, engine) = if let Some(pair) = existing {
+        pair
+    } else {
+        let pair = build_dialog()?;
+        SHARED.with_borrow_mut(|shared| shared.dialog = Some(pair.clone()));
+        pair
+    };
+    let input = engine.borrow().input.clone();
+    input.set_value("");
+    engine.borrow_mut().render();
+    dialog.show_modal()?;
+    input.focus()?;
+    let window = web_sys::window().ok_or("no window")?;
+    let detail = dialog.clone();
+    let tell = Closure::once_into_js(move || dom::say("atrium:palette", &detail));
+    window.request_animation_frame(tell.unchecked_ref())?;
+    Ok(())
+}
+
+fn build_dialog() -> Result<(HtmlDialogElement, Rc<RefCell<Engine>>), JsValue> {
+    let document = dom::document().ok_or("no document")?;
+    let dialog: HtmlDialogElement = document.create_element("dialog")?.dyn_into()?;
+    dialog.set_class_name("palette");
+    dialog.set_attribute("aria-label", "Jump to")?;
+    dialog.set_inner_html(
+        "<div class=\"pal-in\"><input type=\"text\" role=\"combobox\" aria-expanded=\"true\" \
+         aria-controls=\"pal-list\" aria-autocomplete=\"list\" \
+         placeholder=\"Jump to a page, or type a setting\" aria-label=\"Jump to\"><kbd>Esc</kbd></div>\
+         <ul class=\"pal-list\" id=\"pal-list\" role=\"listbox\" aria-label=\"Destinations\"></ul>",
+    );
+    document.body().ok_or("no body")?.append_child(&dialog)?;
+    let input: HtmlInputElement = dialog
+        .query_selector("input")?
+        .ok_or("no input")?
+        .dyn_into()?;
+    let list = dialog.query_selector("ul")?.ok_or("no list")?;
+    let search = SHARED.with_borrow(|shared| shared.search.clone());
+    let engine = Engine::new(&input, &list, false, search);
+    let backdrop = dialog.clone();
+    dom::on(&dialog, "click", move |event| {
+        if event.target().as_ref() == Some(backdrop.as_ref()) {
+            backdrop.close();
+        }
+    });
+    dom::on(&dialog, "close", |_| {
+        dom::say("atrium:palette", &JsValue::NULL);
+    });
+    Ok((dialog, engine))
+}
+
+impl Engine {
+    fn new(
+        input: &HtmlInputElement,
+        list: &Element,
+        inline: bool,
+        search: String,
+    ) -> Rc<RefCell<Self>> {
+        let engine = Rc::new(RefCell::new(Self {
+            input: input.clone(),
+            list: list.clone(),
+            inline,
+            search,
+            shown: Vec::new(),
+            selected: 0,
+        }));
+        SHARED.with_borrow_mut(|shared| shared.engines.push(Rc::clone(&engine)));
+        load_pages();
+
+        let keys = Rc::clone(&engine);
+        dom::on(input, "input", {
+            let engine = Rc::clone(&engine);
+            move |_| engine.borrow_mut().render()
+        });
+        dom::on(input, "keydown", move |event| {
+            let key = event.unchecked_ref::<KeyboardEvent>();
+            let name = key.key();
+            let count = keys.borrow().shown.len();
+            let step = match name.as_str() {
+                "ArrowDown" => 1,
+                "ArrowUp" => count.saturating_sub(1),
+                "n" if key.ctrl_key() => 1,
+                "p" if key.ctrl_key() => count.saturating_sub(1),
+                "Enter" if count > 0 => {
+                    event.prevent_default();
+                    let selected = keys.borrow().selected;
+                    choose(&keys, selected);
+                    return;
+                }
+                "Escape" if keys.borrow().inline => {
+                    event.prevent_default();
+                    let engine = &keys;
+                    if engine.borrow().input.value().is_empty() {
+                        close(engine);
+                    } else {
+                        engine.borrow().input.set_value("");
+                        engine.borrow_mut().render();
+                    }
+                    return;
+                }
+                _ => return,
+            };
             event.prevent_default();
-            return self.toggle();
-        }
-        if self.dialog.open() {
-            return self.move_within(event, &key);
-        }
-        if chord || event.alt_key() || typing(event) {
-            return Ok(());
-        }
-        let now = event.time_stamp();
-        let typed = if now - self.last_key_at > PAUSE_MS {
-            ""
-        } else {
-            self.typed.as_str()
-        };
-        self.last_key_at = now;
-        let sequences: Vec<Option<&str>> = self
-            .commands
-            .iter()
-            .map(|command| command.keys.as_deref())
-            .collect();
-        match step(typed, &key, &sequences) {
-            Step::Run(index) => {
-                self.typed.clear();
+            if count > 0 {
+                let mut engine = keys.borrow_mut();
+                engine.selected = (engine.selected + step) % count;
+                engine.paint();
+            }
+        });
+        let pointer = Rc::clone(&engine);
+        dom::on(list, "pointermove", move |event| {
+            if let Some(index) = row(&event)
+                && pointer.borrow().selected != index
+            {
+                let mut engine = pointer.borrow_mut();
+                engine.selected = index;
+                engine.paint();
+            }
+        });
+        dom::on(list, "pointerdown", |event| event.prevent_default());
+        let click = Rc::clone(&engine);
+        dom::on(list, "click", move |event| {
+            if let Some(index) = row(&event) {
                 event.prevent_default();
-                go(&self.commands[index].href)
+                choose(&click, index);
             }
-            Step::Wait(typed) => {
-                self.typed = typed;
-                Ok(())
-            }
-            Step::Nothing => {
-                self.typed.clear();
-                Ok(())
-            }
-        }
+        });
+        engine
     }
 
-    fn toggle(&self) -> Result<(), JsValue> {
-        if self.dialog.open() {
-            self.dialog.close();
-            return Ok(());
-        }
-        self.input.set_value("");
-        self.filter();
-        self.dialog.show_modal()?;
-        self.input.focus()
-    }
-
-    /// Enter in the field follows the first command shown; the arrows move between the field
-    /// and the commands shown.
-    fn move_within(&self, event: &KeyboardEvent, key: &str) -> Result<(), JsValue> {
-        let shown: Vec<&Command> = self
-            .commands
-            .iter()
-            .filter(|command| !command.item.has_attribute("hidden"))
+    fn render(&mut self) {
+        let query = self.input.value().trim().to_owned();
+        let lowered = lower(&query);
+        let mut rows: Vec<(Item, Hit)> = items()
+            .into_iter()
+            .filter(|item| !(self.inline && query.is_empty() && item.group == SETTINGS))
+            .filter_map(|item| {
+                let hit = find(&lowered, &lower(&item.title)).or_else(|| {
+                    (!item.sub.is_empty() && find(&lowered, &lower(&item.sub)).is_some()).then(
+                        || Hit {
+                            score: 0.1,
+                            at: Vec::new(),
+                        },
+                    )
+                })?;
+                Some((item, hit))
+            })
             .collect();
-        let active = self.document.active_element();
-        let at = shown
-            .iter()
-            .position(|command| active.as_ref() == Some(command.link.as_ref()));
-        let target = match (key, at) {
-            ("Enter", None) => return shown.first().map_or(Ok(()), |first| go(&first.href)),
-            ("ArrowDown", None) => shown.first().map(|command| &command.link),
-            ("ArrowDown", Some(at)) => shown.get(at + 1).map(|command| &command.link),
-            ("ArrowUp", Some(0)) => Some(self.input.unchecked_ref::<HtmlElement>()),
-            ("ArrowUp", Some(at)) => shown.get(at - 1).map(|command| &command.link),
-            _ => return Ok(()),
-        };
-        event.prevent_default();
-        target.map_or(Ok(()), HtmlElement::focus)
+        if !query.is_empty() {
+            rows.sort_by(|a, b| b.1.score.total_cmp(&a.1.score));
+        }
+        rows.truncate(if query.is_empty() { 14 } else { 8 });
+        if !query.is_empty() {
+            let encoded = String::from(js_sys::encode_uri_component(&query));
+            rows.push((
+                Item {
+                    group: "Search",
+                    title: ["Search the wiki for “", &query, "”"].concat(),
+                    sub: String::new(),
+                    hint: "↵".to_owned(),
+                    action: Action::Go([self.search.as_str(), "?q=", &encoded].concat()),
+                },
+                Hit {
+                    score: 0.0,
+                    at: Vec::new(),
+                },
+            ));
+        }
+        let id = self.list.id();
+        let mut html = String::new();
+        let mut last = "";
+        for (index, (item, hit)) in rows.iter().enumerate() {
+            if item.group != last {
+                html.push_str("<li class=\"pal-group\" role=\"presentation\">");
+                html.push_str(item.group);
+                html.push_str("</li>");
+                last = item.group;
+            }
+            let number = index.to_string();
+            html.push_str("<li role=\"option\" id=\"");
+            escape(&id, &mut html);
+            html.push('-');
+            html.push_str(&number);
+            html.push_str("\" data-i=\"");
+            html.push_str(&number);
+            html.push_str(
+                "\" aria-selected=\"false\"><div class=\"pal-item\"><span class=\"pi-t\">",
+            );
+            mark(&item.title, &hit.at, &mut html);
+            html.push_str("</span><span class=\"pi-m\">");
+            escape(&item.hint, &mut html);
+            html.push_str("</span></div></li>");
+        }
+        if html.is_empty() {
+            html.push_str(
+                "<li class=\"pal-empty\" role=\"presentation\">Nothing by that name.</li>",
+            );
+        }
+        self.list.set_inner_html(&html);
+        self.shown = rows.into_iter().map(|(item, _)| item).collect();
+        self.selected = 0;
+        self.paint();
     }
 
-    fn filter(&self) {
-        let query = self.input.value();
-        for command in &self.commands {
-            let _ = command
-                .item
-                .toggle_attribute_with_force("hidden", !matches(&query, &command.label));
+    fn paint(&self) {
+        for option in dom::query(&self.list, "[role=option]") {
+            let on = option.get_attribute("data-i") == Some(self.selected.to_string());
+            let _ = option.set_attribute("aria-selected", if on { "true" } else { "false" });
+            if on {
+                let _ = self
+                    .input
+                    .set_attribute("aria-activedescendant", &option.id());
+                let options = ScrollIntoViewOptions::new();
+                options.set_block(ScrollLogicalPosition::Nearest);
+                option.scroll_into_view_with_scroll_into_view_options(&options);
+            }
         }
     }
 }
 
-/// Whether the key goes to a field the person is typing in.
-fn typing(event: &KeyboardEvent) -> bool {
-    event
-        .target()
-        .and_then(|target| target.dyn_into::<HtmlElement>().ok())
-        .is_some_and(|element| {
-            element.is_content_editable()
-                || matches!(element.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
-        })
+/// The row an event happened in, by its index among the rows shown.
+fn row(event: &web_sys::Event) -> Option<usize> {
+    dom::closest(event, "[role=option]")?
+        .get_attribute("data-i")?
+        .parse()
+        .ok()
 }
 
-fn go(href: &str) -> Result<(), JsValue> {
-    web_sys::window()
-        .ok_or("no window")?
-        .location()
-        .assign(href)
+fn choose(engine: &Rc<RefCell<Engine>>, index: usize) {
+    let Some(action) = engine
+        .borrow()
+        .shown
+        .get(index)
+        .map(|item| item.action.clone())
+    else {
+        return;
+    };
+    close(engine);
+    match action {
+        Action::Go(href) => dom::go(&href),
+        Action::Theme => prefs::toggle_theme(),
+        Action::Intensity(level) => prefs::set_intensity(level),
+    }
+}
+
+fn close(engine: &Rc<RefCell<Engine>>) {
+    let engine = engine.borrow();
+    if engine.inline {
+        let _ = engine.list.toggle_attribute_with_force("hidden", true);
+        let _ = engine.input.set_attribute("aria-expanded", "false");
+        let _ = engine.input.unchecked_ref::<HtmlElement>().blur();
+    } else {
+        close_dialog();
+    }
+}
+
+/// Every destination: the page's own sections, the wiki's pages, the settings.
+fn items() -> Vec<Item> {
+    let mut items = Vec::new();
+    if let Some(root) = dom::root() {
+        for link in dom::query(&root, ".index a[data-key]") {
+            let label = link
+                .query_selector(".lb")
+                .ok()
+                .flatten()
+                .and_then(|label| label.text_content())
+                .unwrap_or_default();
+            let key = link.get_attribute("data-key").unwrap_or_default();
+            items.push(Item {
+                group: "Sections",
+                title: label,
+                sub: String::new(),
+                hint: ["[", &key, "]"].concat(),
+                action: Action::Go(link.get_attribute("href").unwrap_or_default()),
+            });
+        }
+    }
+    SHARED.with_borrow(|shared| items.extend(shared.pages.iter().cloned()));
+    items.push(Item {
+        group: SETTINGS,
+        title: "Switch day and night".to_owned(),
+        sub: String::new(),
+        hint: "T".to_owned(),
+        action: Action::Theme,
+    });
+    let current = prefs::intensity();
+    for level in ["calm", "normal", "lively"] {
+        items.push(Item {
+            group: SETTINGS,
+            title: ["Field: ", level].concat(),
+            sub: String::new(),
+            hint: if current == level { "on" } else { "" }.to_owned(),
+            action: Action::Intensity(level),
+        });
+    }
+    items
+}
+
+/// Lowercase as the browser does it, which knows every script.
+fn lower(text: &str) -> String {
+    JsString::from(text).to_lower_case().into()
+}
+
+/// Fetches the pages once, then renders any list whose field has focus.
+fn load_pages() {
+    let Some(url) = SHARED.with_borrow_mut(|shared| {
+        let first = !shared.loading && !shared.pages_url.is_empty();
+        shared.loading = true;
+        first.then(|| shared.pages_url.clone())
+    }) else {
+        return;
+    };
+    dom::fetch(&url, |list| {
+        let pages: Vec<Item> = Array::from(&list)
+            .iter()
+            .map(|page| {
+                let text = |key: &str| {
+                    Reflect::get(&page, &JsValue::from_str(key))
+                        .ok()
+                        .and_then(|value| value.as_string())
+                        .unwrap_or_default()
+                };
+                Item {
+                    group: "Pages",
+                    title: text("t"),
+                    sub: text("path"),
+                    hint: text("m"),
+                    action: Action::Go(text("href")),
+                }
+            })
+            .collect();
+        let engines = SHARED.with_borrow_mut(|shared| {
+            shared.pages = pages;
+            shared.engines.clone()
+        });
+        let active = dom::document().and_then(|document| document.active_element());
+        for engine in engines {
+            let focused = active.as_ref() == Some(engine.borrow().input.as_ref());
+            if focused {
+                engine.borrow_mut().render();
+            }
+        }
+    });
 }
