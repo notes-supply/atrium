@@ -7,8 +7,8 @@ use std::str::FromStr;
 use std::time::Duration;
 
 use reqwest::{Client, StatusCode};
+use serde::Deserialize;
 use serde::de::DeserializeOwned;
-use serde::{Deserialize, Serialize};
 
 /// Why a call to Mneme gave no answer to show.
 #[derive(Debug, thiserror::Error)]
@@ -28,13 +28,13 @@ pub enum MnemeError {
 }
 
 /// A page's id: 16 lowercase hexadecimal characters, stable across renames.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(try_from = "String", into = "String")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(try_from = "String")]
 pub struct PageId(String);
 
 /// A commit's full id: 40 lowercase hexadecimal characters.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize, Serialize)]
-#[serde(try_from = "String", into = "String")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(try_from = "String")]
 pub struct CommitId(String);
 
 fn hex_of_length(text: &str, length: usize) -> bool {
@@ -63,12 +63,6 @@ macro_rules! hex_id {
 
             fn try_from(text: String) -> Result<Self, Self::Error> {
                 text.parse()
-            }
-        }
-
-        impl From<$type> for String {
-            fn from(id: $type) -> Self {
-                id.0
             }
         }
 

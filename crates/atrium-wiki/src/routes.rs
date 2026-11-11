@@ -86,10 +86,10 @@ fn respond(shell: &Shell, shown: Shown) -> Response {
             "Not understood",
             "The address asks for something the wiki does not offer.".to_owned(),
         ),
-        Err(Failure::Mneme(MnemeError::Broken(_))) => (
+        Err(Failure::Mneme(MnemeError::Broken(detail))) => (
             StatusCode::BAD_GATEWAY,
             "Unexpected answer",
-            "Mneme answered in a way this version of Atrium cannot read.".to_owned(),
+            format!("Mneme answered in a way this version of Atrium cannot read: {detail}"),
         ),
     };
     shell.respond(status, title, html! { h1 { (title) } p { (why) } })
@@ -153,10 +153,10 @@ fn paging(total: u64, offset: u64, size: u64, link: impl Fn(u64) -> String) -> M
             nav aria-label="Pages of this list" {
                 ul {
                     @if offset > 0 {
-                        li { a href=(link(offset.saturating_sub(size))) rel="prev" { "Newer or earlier" } }
+                        li { a href=(link(offset.saturating_sub(size))) rel="prev" { "Previous page" } }
                     }
                     @if offset + size < total {
-                        li { a href=(link(offset + size)) rel="next" { "More" } }
+                        li { a href=(link(offset + size)) rel="next" { "Next page" } }
                     }
                 }
             }
