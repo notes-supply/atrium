@@ -1,50 +1,79 @@
 //! Headers, caching and the HTML rules, over every route.
 
+use std::collections::{BTreeMap, VecDeque};
+
 use atrium_wiki::stub::Stub;
 
 use crate::html::{attrs, check};
-use crate::support::Atrium;
+use crate::support::{Atrium, Reply};
 
-/// One address per route, with the status each answers.
-const ROUTES: &[(&str, u16)] = &[
-    ("/", 200),
+/// Addresses no link leads to, with the status each answers. Every page a link leads to is
+/// found by following links from home.
+const UNLINKED: &[(&str, u16)] = &[
     ("/no-such-page", 404),
-    ("/wiki", 200),
-    ("/wiki?sort=churn&order=asc", 200),
     ("/wiki?sort=colour", 400),
-    ("/wiki/page/4226c96dd1386f3a", 200),
     ("/wiki/page/0123456789abcdef", 404),
-    ("/wiki/page/4226c96dd1386f3a/history", 200),
-    (
-        "/wiki/page/4226c96dd1386f3a/at/faf510a1fb457f1af5496ca64dea77ed68ddb2f8",
-        200,
-    ),
-    ("/wiki/page/4226c96dd1386f3a/diff", 200),
-    ("/wiki/changes", 200),
-    ("/wiki/search", 200),
     ("/wiki/search?q=harbours", 200),
     ("/wiki/search?q=%22open", 400),
-    ("/wiki/machines", 200),
 ];
 
 const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
     style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; \
     form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
+fn keeps_the_rules(path: &str, reply: &Reply) {
+    assert_eq!(reply.header("content-security-policy"), Some(CSP), "{path}");
+    assert_eq!(reply.header("cache-control"), Some("no-store"), "{path}");
+    assert_eq!(
+        reply.header("content-type"),
+        Some("text/html; charset=utf-8"),
+        "{path}"
+    );
+    check(path, &reply.body);
+}
+
+/// Every page reachable from home by links and redirects within the site, which is every
+/// route of every feature the registry lists.
+async fn crawl(atrium: &Atrium) -> BTreeMap<String, u16> {
+    let mut found = BTreeMap::new();
+    let mut queue = VecDeque::from(["/".to_owned()]);
+    while let Some(path) = queue.pop_front() {
+        if found.contains_key(&path) || path.starts_with("/assets/") {
+            continue;
+        }
+        assert!(found.len() < 500, "the crawl does not end");
+        let reply = atrium.get(&path).await;
+        found.insert(path.clone(), reply.status);
+        let next = match reply.status {
+            303 => vec![reply.header("location").unwrap().to_owned()],
+            200 | 404 => {
+                keeps_the_rules(&path, &reply);
+                attrs(&reply.body, "a[href]", "href")
+            }
+            status => panic!("{path} answered {status}"),
+        };
+        for href in next {
+            let href = href.split('#').next().unwrap_or_default();
+            if href.starts_with('/') && !href.starts_with("//") {
+                queue.push_back(href.to_owned());
+            }
+        }
+    }
+    found
+}
+
 #[tokio::test]
 async fn every_page_keeps_the_output_rules() {
     let atrium = Atrium::tailnet().await;
-    for (path, status) in ROUTES {
+    let found = crawl(&atrium).await;
+    for nav in attrs(&atrium.get("/").await.body, "header nav a", "href") {
+        assert_eq!(found.get(&nav), Some(&200), "{nav} was reached");
+    }
+    assert!(found.len() > 20, "{found:?}");
+    for (path, status) in UNLINKED {
         let reply = atrium.get(path).await;
         assert_eq!(reply.status, *status, "{path}");
-        assert_eq!(reply.header("content-security-policy"), Some(CSP), "{path}");
-        assert_eq!(reply.header("cache-control"), Some("no-store"), "{path}");
-        assert_eq!(
-            reply.header("content-type"),
-            Some("text/html; charset=utf-8"),
-            "{path}"
-        );
-        check(path, &reply.body);
+        keeps_the_rules(path, &reply);
     }
 }
 
