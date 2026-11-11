@@ -1,11 +1,13 @@
-// The only script on a page. Each element with a data-module attribute names its module's
-// glue and .wasm in data-glue and data-wasm; this imports each module once and starts it.
-// Module scripts run deferred, after the document is parsed.
-const started = new Set();
+// The only script on a page. Its own element names the two bundles in data-ui, data-ui-wasm,
+// data-field and data-field-wasm. It starts the field bundle when the page has the field,
+// and the ui bundle when it names any other module. Module scripts run after parsing.
+const bundles = document.querySelector("script[data-ui]").dataset;
+const names = new Set();
 for (const element of document.querySelectorAll("[data-module]")) {
-  const { glue, wasm } = element.dataset;
-  if (glue && wasm && !started.has(glue)) {
-    started.add(glue);
-    import(glue).then((module) => module.default({ module_or_path: wasm }));
-  }
+  for (const name of element.dataset.module.split(/\s+/)) names.add(name);
 }
+const start = (glue, wasm) => import(glue).then((m) => m.default({ module_or_path: wasm }));
+document.documentElement.classList.add("js");
+if (names.delete("field")) start(bundles.field, bundles.fieldWasm);
+names.delete("");
+if (names.size) start(bundles.ui, bundles.uiWasm);

@@ -7,6 +7,8 @@
 
 mod browser;
 
+pub use browser::mount;
+
 /// Whether `label` matches `query`: every word of the query appears in it, without case.
 #[must_use]
 pub fn matches(query: &str, label: &str) -> bool {

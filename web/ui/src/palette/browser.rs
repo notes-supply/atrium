@@ -7,7 +7,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, HtmlDialogElement, HtmlElement, HtmlInputElement, KeyboardEvent};
 
-use crate::{Step, matches, step};
+use super::{Step, matches, step};
 
 /// Keys typed further apart than this many milliseconds start a new sequence.
 const PAUSE_MS: f64 = 1500.0;
@@ -30,18 +30,12 @@ struct Palette {
     last_key_at: f64,
 }
 
-/// Builds the palette from the page's command links, if the page has any.
-///
-/// # Errors
-///
-/// Fails when the page cannot be read or changed as expected.
-#[wasm_bindgen(start)]
-pub fn start() -> Result<(), JsValue> {
-    let window = web_sys::window().ok_or("no window")?;
-    let document = window.document().ok_or("no document")?;
-    let Some(source) = document.query_selector("[data-module~=palette]")? else {
-        return Ok(());
-    };
+/// Builds the palette from the command links in `source`.
+pub fn mount(source: &Element) -> Result<(), JsValue> {
+    let document = web_sys::window()
+        .ok_or("no window")?
+        .document()
+        .ok_or("no document")?;
     let dialog: HtmlDialogElement = document.create_element("dialog")?.dyn_into()?;
     dialog.set_class_name("palette");
     dialog.set_attribute("aria-label", "Commands")?;

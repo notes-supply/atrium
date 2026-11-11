@@ -1,6 +1,6 @@
 [package]
-name = "atrium-palette"
-description = "The command palette, a Wasm module: Ctrl+K or Cmd+K lists the page's commands, and their keys run them."
+name = "atrium-web-ui"
+description = "Every small behaviour of Atrium's pages as one Wasm bundle, each module mounted by its data-module name."
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
@@ -11,6 +11,7 @@ workspace = true
 [dependencies]
 wasm-bindgen.workspace = true
 web-sys = { workspace = true, features = [
+  "console",
   "Document",
   "DomTokenList",
   "Element",
