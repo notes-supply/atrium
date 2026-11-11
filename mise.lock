@@ -13,6 +13,16 @@ checksum_source = "mise-versions"
 url = "https://github.com/EmbarkStudios/cargo-deny/releases/download/0.20.2/cargo-deny-0.20.2-x86_64-unknown-linux-musl.tar.gz"
 url_api = "https://api.github.com/repos/EmbarkStudios/cargo-deny/releases/assets/471598214"
 
+[[tools."aqua:WebAssembly/binaryen"]]
+version = "133"
+backend = "aqua:WebAssembly/binaryen"
+specifiers = ["133"]
+
+[tools."aqua:WebAssembly/binaryen"."platforms.linux-x64"]
+checksum = "sha256:2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489"
+url = "https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz"
+url_api = "https://api.github.com/repos/WebAssembly/binaryen/releases/assets/580050094"
+
 [[tools."aqua:nextest-rs/nextest/cargo-nextest"]]
 version = "0.9.150"
 backend = "aqua:nextest-rs/nextest/cargo-nextest"
@@ -44,6 +54,17 @@ specifiers = ["1.30.1"]
 checksum = "sha256:e65324f4430c2717591937edcec90ccbefaf14c174f8ec9415e03ca875b46e1a"
 url = "https://github.com/zizmorcore/zizmor/releases/download/v1.30.1/zizmor-x86_64-unknown-linux-gnu.tar.gz"
 url_api = "https://api.github.com/repos/zizmorcore/zizmor/releases/assets/552067642"
+provenance = "github-attestations"
+
+[[tools."github:wasm-bindgen/wasm-bindgen"]]
+version = "0.2.129"
+backend = "github:wasm-bindgen/wasm-bindgen"
+specifiers = ["0.2.129"]
+
+[tools."github:wasm-bindgen/wasm-bindgen"."platforms.linux-x64"]
+checksum = "sha256:82d12bb940e2d4e72e0d5605387fc1b8ca179044e012b620f0ce4e7440e8320e"
+url = "https://github.com/wasm-bindgen/wasm-bindgen/releases/download/0.2.129/wasm-bindgen-0.2.129-x86_64-unknown-linux-musl.tar.gz"
+url_api = "https://api.github.com/repos/wasm-bindgen/wasm-bindgen/releases/assets/587769529"
 provenance = "github-attestations"
 
 [[tools.rust]]

@@ -10,26 +10,58 @@ rust = { version = "nightly-2026-10-28", profile = "minimal", components = "rust
 "aqua:EmbarkStudios/cargo-deny" = "0.20.2"
 "aqua:rhysd/actionlint" = "1.7.12"
 "aqua:zizmorcore/zizmor" = "1.30.1"
+# The Wasm pipeline (mise run build:wasm). The CLI's version must equal the wasm-bindgen crate's.
+"github:wasm-bindgen/wasm-bindgen" = "0.2.129"
+"aqua:WebAssembly/binaryen" = "133"
 
 [tasks.fmt]
 description = "Format the Rust sources"
 run = "cargo fmt --all"
+
+[tasks."build:wasm"]
+description = "Build the palette's Wasm module and glue into target/web, where the server embeds them"
+sources = ["Cargo.lock", "Cargo.toml", "web/**/*"]
+outputs = ["target/web/palette.js", "target/web/palette_bg.wasm"]
+run = """
+set -euo pipefail
+rm -rf target/web target/web-raw
+mkdir -p target/web target/web-raw
+# build-std needs std's own unstable features, so these are the only flags for this build.
+# Immediate abort leaves out panic formatting. The crate is built as a cdylib only here, so
+# native builds and tests treat it as a plain library.
+RUSTFLAGS="-Zunstable-options -Cpanic=immediate-abort" CARGO_TARGET_DIR=target/wasm \
+  cargo rustc --locked --profile wasm --target wasm32-unknown-unknown \
+  --config web/build-std.toml -p atrium-palette --lib --crate-type cdylib
+wasm-bindgen --target web --no-typescript --out-dir target/web-raw --out-name palette \
+  target/wasm/wasm32-unknown-unknown/wasm/atrium_palette.wasm
+# The features rustc enables for wasm32. Never --all-features: Chromium rejects some.
+wasm-opt -Oz --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext \
+  --enable-mutable-globals --enable-multivalue --enable-reference-types \
+  target/web-raw/palette_bg.wasm -o target/web/palette_bg.wasm
+cp target/web-raw/palette.js target/web/palette.js
+"""
 
 [tasks."check:fmt"]
 description = "Check formatting"
 run = "cargo fmt --all -- --check"
 
 [tasks."check:clippy"]
-description = "Lint every target with warnings denied"
-run = "cargo clippy --locked --workspace --all-targets -- -D warnings"
+description = "Lint every target with warnings denied, natively and for Wasm"
+depends = ["build:wasm"]
+run = [
+  "cargo clippy --locked --workspace --all-targets -- -D warnings",
+  "cargo clippy --locked -p atrium-palette --target wasm32-unknown-unknown -- -D warnings",
+]
 
 [tasks."check:test"]
 description = "Run the tests against a stub that serves Mneme's example responses"
+depends = ["build:wasm"]
 wait_for = ["check:clippy"]
 run = "cargo nextest run --locked --workspace --no-tests=fail"
 
 [tasks."test:mneme"]
 description = "Run the test against a real mneme serve; ATRIUM_MNEME_BIN names the binary"
+depends = ["build:wasm"]
 run = "cargo nextest run --locked --workspace --run-ignored only --no-tests=fail"
 
 [tasks."check:advisories"]

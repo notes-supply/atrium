@@ -28,6 +28,19 @@ pub struct Chrome {
     pub commands: Vec<Command>,
     /// The stylesheet's URL.
     pub stylesheet: String,
+    /// The module loader's URL: the page's one script, when it has a module.
+    pub loader: String,
+    /// The command palette's module.
+    pub palette: Module,
+}
+
+/// A Wasm module's files, as the loader reads them from the element that names the module.
+#[derive(Debug, Clone)]
+pub struct Module {
+    /// The URL of its JavaScript glue.
+    pub glue: String,
+    /// The URL of its `.wasm`.
+    pub wasm: String,
 }
 
 /// The shell for one request: the chrome and the path, so the current navigation entry is
@@ -101,6 +114,8 @@ impl Shell {
 
     fn document(&self, title: &str, main: &impl Render) -> Markup {
         let chrome = &self.chrome;
+        // The palette is the only module so far; a page loads the loader only with one.
+        let palette = !chrome.commands.is_empty();
         html! {
             (DOCTYPE)
             html lang="en" {
@@ -109,6 +124,9 @@ impl Shell {
                     meta name="viewport" content="width=device-width, initial-scale=1";
                     title { (title) " · Atrium" }
                     link rel="stylesheet" href=(chrome.stylesheet);
+                    @if palette {
+                        script type="module" src=(chrome.loader) {}
+                    }
                 }
                 body {
                     a.skip href={ "#" (MAIN) } { "Skip to content" }
@@ -126,17 +144,22 @@ impl Shell {
                         }
                     }
                     main id=(MAIN) { (main) }
-                    footer {
-                        nav aria-labelledby="commands" {
-                            h2 #commands { "Commands" }
-                            ul {
-                                @for command in &chrome.commands {
-                                    li {
-                                        a href=(command.href) data-keys=[command.keys] {
-                                            (command.label)
-                                        }
-                                        @if let Some(keys) = command.keys {
-                                            " " kbd { (keys) }
+                    @if palette {
+                        footer {
+                            nav aria-labelledby="commands" data-module="palette"
+                                data-glue=(chrome.palette.glue) data-wasm=(chrome.palette.wasm)
+                            {
+                                h2 #commands { "Commands" }
+                                p { "Ctrl+K or ⌘K opens these anywhere." }
+                                ul {
+                                    @for command in &chrome.commands {
+                                        li {
+                                            a href=(command.href) data-keys=[command.keys] {
+                                                (command.label)
+                                            }
+                                            @if let Some(keys) = command.keys {
+                                                " " kbd { (keys) }
+                                            }
                                         }
                                     }
                                 }
@@ -186,6 +209,11 @@ mod tests {
                 ],
                 commands: Vec::new(),
                 stylesheet: "/assets/atrium.css".to_owned(),
+                loader: "/assets/loader.js".to_owned(),
+                palette: Module {
+                    glue: "/assets/palette.js".to_owned(),
+                    wasm: "/assets/palette_bg.wasm".to_owned(),
+                },
             }),
             path,
         )

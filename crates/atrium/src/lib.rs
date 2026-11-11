@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use atrium_core::Viewer;
-use atrium_ui::{Chrome, Shell};
+use atrium_ui::{Chrome, Module, Shell};
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
@@ -83,11 +83,18 @@ pub async fn run(config: Config) -> Result<()> {
 pub fn app(config: &Config) -> Result<Router> {
     let mut assets = Assets::default();
     let stylesheet = assets.add("atrium", "css", atrium_ui::STYLESHEET.as_bytes());
+    let loader = assets.add("loader", "js", assets::LOADER);
+    let palette = Module {
+        glue: assets.add("palette", "js", assets::PALETTE_GLUE),
+        wasm: assets.add("palette_bg", "wasm", assets::PALETTE_WASM),
+    };
     let site = Arc::new(Site::new(features::registry(config)?, config.viewer));
     let chrome = Arc::new(Chrome {
         nav: site.nav(),
         commands: site.commands(),
         stylesheet,
+        loader,
+        palette,
     });
     let pages = site
         .all()

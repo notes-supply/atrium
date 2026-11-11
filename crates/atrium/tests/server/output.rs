@@ -1,5 +1,7 @@
 //! Headers, caching and the HTML rules, over every route.
 
+use atrium_wiki::stub::Stub;
+
 use crate::html::{attrs, check};
 use crate::support::Atrium;
 
@@ -99,4 +101,62 @@ async fn an_unknown_host_is_refused_except_for_health_checks() {
         .get_with("/healthz", &[("host", "10.0.0.7:8080")])
         .await;
     assert_eq!(health.status, 200);
+}
+
+#[tokio::test]
+async fn the_palette_loads_through_one_loader_of_at_most_a_kilobyte() {
+    let atrium = Atrium::tailnet().await;
+    let home = atrium.get("/").await.body;
+    let loader = &attrs(&home, "script", "src")[0];
+    let reply = atrium.get(loader).await;
+    assert_eq!(reply.status, 200);
+    assert!(reply.body.len() <= 1024, "{} bytes", reply.body.len());
+    assert_eq!(
+        reply.header("content-type"),
+        Some("text/javascript; charset=utf-8")
+    );
+    assert_eq!(
+        reply.header("cache-control"),
+        Some("public, max-age=31536000, immutable")
+    );
+    assert_eq!(attrs(&home, "[data-module]", "data-module"), ["palette"]);
+    let glue = atrium
+        .get(&attrs(&home, "[data-module]", "data-glue")[0])
+        .await;
+    assert_eq!(glue.status, 200);
+    assert!(
+        glue.body.contains(" as default };"),
+        "the default export the loader calls"
+    );
+    let wasm = atrium
+        .get(&attrs(&home, "[data-module]", "data-wasm")[0])
+        .await;
+    assert_eq!(wasm.status, 200);
+    assert_eq!(wasm.header("content-type"), Some("application/wasm"));
+    assert!(wasm.body.as_bytes().starts_with(b"\0asm"), "a Wasm module");
+}
+
+#[tokio::test]
+async fn every_command_is_also_a_plain_link() {
+    let atrium = Atrium::tailnet().await;
+    let home = atrium.get("/").await.body;
+    assert_eq!(
+        attrs(&home, "[data-module=palette] a", "href"),
+        [
+            "/",
+            "/wiki",
+            "/wiki/changes",
+            "/wiki/search",
+            "/wiki/machines"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_page_with_nothing_interactive_has_no_script() {
+    let atrium = Atrium::start(Stub::Fixtures, &["--viewer", "anonymous"]).await;
+    let reply = atrium.get("/").await;
+    assert_eq!(reply.status, 404);
+    assert!(!reply.body.contains("<script"), "{}", reply.body);
+    check("/ to an anonymous viewer", &reply.body);
 }

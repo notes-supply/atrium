@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "web/*"]
 
 [workspace.package]
 version = "0.1.0"
@@ -28,6 +28,8 @@ sha2 = "0.11.1"
 tempfile = "3.27.0"
 thiserror = "2.0.21"
 tower = "0.5.3"
+wasm-bindgen = "=0.2.129"
+web-sys = "0.3.106"
 tokio = { version = "1.54.1", features = ["macros", "net", "rt-multi-thread", "signal", "time"] }
 
 [workspace.lints.rust]
@@ -49,3 +51,13 @@ dbg_macro = "deny"
 
 [profile.release]
 lto = "thin"
+
+# Only for the Wasm modules, with web/build-std.toml (mise run build:wasm).
+[profile.wasm]
+inherits = "release"
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+debug = false

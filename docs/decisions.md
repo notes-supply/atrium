@@ -33,3 +33,13 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 - **A page over Mneme's markup budget is shown as its raw text,** as Mneme indexes it, so one dense page cannot make comrak hold a very large tree.
 - **A diff line carries its sign as text** (`-`, `+`), inside `<del>` or `<ins>`, with changed words in `<mark>`. Screen readers do not announce `<del>` and `<ins>`.
 - **Mneme errors map to one response each:** away, slow or failing is 503 with `Retry-After: 30`; an unknown page or commit is 404; a search Mneme cannot read is 400 with Mneme's reason; an answer Atrium cannot parse is 502.
+
+## The Wasm pipeline
+
+- **The pipeline is shebang-web's:** `build-std` with `optimize_for_size`, immediate abort, a `wasm` profile at `opt-level = "z"` with fat LTO, `wasm-bindgen --target web`, then `wasm-opt -Oz` with the features rustc enables. The crate is built as a `cdylib` only in `mise run build:wasm`, so native builds and tests treat it as a plain library.
+- **wasm-bindgen is pinned at 0.2.129, one release behind crates.io's 0.2.130.** The CLI must equal the crate, and the build machine has a provenance-checked `mise.lock` entry for the 0.2.129 CLI and none for 0.2.130; writing a new one needs GitHub, which this build was not to use. Move both together.
+- **The server embeds the built files** with `include_bytes!` from `target/web`, so `mise run build:wasm` comes before any Cargo build of the server. The gate's clippy and test tasks depend on it, and it is skipped when its sources have not changed.
+- **The glue and the loader are not minified.** shebang-web minifies with Bun, which would be one more tool for about 1.5 KB of brotli. The loader is 531 bytes as written.
+- **The palette sits in every page's footer, where the commands are plain links,** so every page that has commands loads the loader. A page without commands, such as any page for an anonymous viewer today, has no script. The loader starts each module once from its element's `data-glue` and `data-wasm`.
+- **Command keys such as `g w` are real:** typed outside a field, one after the other within 1.5 seconds, they follow the command.
+- **The palette was not driven in a browser.** Headless Chromium does not start on the build machine. The module and glue instantiate under Bun and run up to the missing `window`; the markup, headers and asset types are tested.

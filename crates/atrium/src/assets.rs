@@ -12,6 +12,12 @@ use sha2::{Digest, Sha256};
 
 use crate::middleware::hex;
 
+/// The module loader, the only script a page loads.
+pub const LOADER: &[u8] = include_bytes!("../../../web/loader.js");
+/// The palette's glue and module, as `mise run build:wasm` leaves them.
+pub const PALETTE_GLUE: &[u8] = include_bytes!("../../../target/web/palette.js");
+pub const PALETTE_WASM: &[u8] = include_bytes!("../../../target/web/palette_bg.wasm");
+
 /// Every asset by its hashed name, such as `atrium.0123456789abcdef.css`.
 #[derive(Debug, Default)]
 pub struct Assets(HashMap<String, Asset>);

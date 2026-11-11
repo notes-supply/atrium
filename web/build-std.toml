@@ -1,0 +1,5 @@
+# The size recipe for the Wasm modules, used only by `mise run build:wasm` through
+# `cargo --config`.
+[unstable]
+build-std = ["std", "panic_abort"]
+build-std-features = ["optimize_for_size"]

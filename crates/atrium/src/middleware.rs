@@ -156,7 +156,7 @@ pub async fn request_log(request: Request, next: Next) -> Response {
 mod tests {
     use super::*;
 
-    use atrium_ui::Chrome;
+    use atrium_ui::{Chrome, Module};
     use axum::routing::get;
     use tower::ServiceExt;
 
@@ -165,6 +165,11 @@ mod tests {
             nav: Vec::new(),
             commands: Vec::new(),
             stylesheet: String::new(),
+            loader: String::new(),
+            palette: Module {
+                glue: String::new(),
+                wasm: String::new(),
+            },
         });
         guard(Router::new().route("/", get(|| async { "inside" })), access)
             .layer(Extension(chrome))
