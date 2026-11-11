@@ -10,10 +10,17 @@ workspace = true
 
 [dependencies]
 anyhow.workspace = true
+atrium-core.workspace = true
+atrium-ui.workspace = true
 axum.workspace = true
 clap.workspace = true
+futures-util.workspace = true
+maud.workspace = true
 serde_json.workspace = true
+sha2.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
 reqwest.workspace = true
+scraper.workspace = true
+tower = { workspace = true, features = ["util"] }

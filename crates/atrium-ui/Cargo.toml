@@ -1,0 +1,15 @@
+[package]
+name = "atrium-ui"
+description = "The page shell, shared components and the stylesheet. The chosen design replaces most of this crate."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+atrium-core.workspace = true
+axum.workspace = true
+jiff.workspace = true
+maud.workspace = true

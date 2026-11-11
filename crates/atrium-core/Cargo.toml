@@ -1,0 +1,13 @@
+[package]
+name = "atrium-core"
+description = "The contract between the server and its features: who is asking, what they may see, and what a feature offers."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+axum.workspace = true
+maud.workspace = true
