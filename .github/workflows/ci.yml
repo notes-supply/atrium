@@ -45,6 +45,13 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - run: mise run test:browser
+      # The trace of each failed test, and the servers' logs.
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser
+          path: target/browser
+          retention-days: 14
 
   # Builds the image with no publishing rights, checks it as it will run and scans it with Trivy
   # (mise run image), and keeps it for the release job, which publishes this exact build.

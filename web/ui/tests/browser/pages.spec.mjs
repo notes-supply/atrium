@@ -22,7 +22,7 @@ for (const { name } of ROUTES) {
           await expect(page.locator('dialog.palette')).toBeVisible();
           await page.keyboard.press('Escape');
           await page.evaluate(() => scrollTo(0, document.body.scrollHeight / 2));
-          await page.waitForTimeout(300);
+          await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
           expect(await page.evaluate(() => window.violations)).toEqual([]);
         });
       });

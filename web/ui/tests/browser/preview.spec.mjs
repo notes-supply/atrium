@@ -73,7 +73,7 @@ test('preview: a quick pass over a link shows and fetches nothing', async ({ pag
     link.dispatchEvent(new PointerEvent('pointerenter'));
     link.dispatchEvent(new PointerEvent('pointerleave'));
   });
-  await page.waitForTimeout(500);
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500)));
   await expect(page.locator('#preview')).toBeHidden();
   expect(asked).toEqual([]);
 });
@@ -84,8 +84,10 @@ test.describe(() => {
     await page.route(/\/wiki\/preview\.json/, (route) => route.abort());
     await open(page, 'page');
     const link = page.locator('article [data-preview]').first();
+    const failed = page.waitForEvent('requestfailed', (request) => request.url().includes('/wiki/preview.json'));
     await link.focus();
-    await page.waitForTimeout(500);
+    await failed;
+    await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     await expect(page.locator('#preview')).toBeHidden();
     await expect(link).not.toHaveAttribute('aria-describedby');
   });
