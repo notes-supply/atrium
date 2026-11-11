@@ -55,6 +55,8 @@ The gate builds the Wasm bundles and holds them to their size budgets, checks fo
 
 `mise run parity` screenshots every route of the demo beside the prototype page it stands for, at 1440 and 390 px in day and night, and reports the share of differing pixels: scripts off, or with `-- --scripts`, scripts on under reduced motion. It writes to `target/check`. Set `PROTOTYPE` where the prototype is not at its default.
 
+`mise run capture` records a short visit to the demo and screenshots home, a page and the machines at both widths in day and night, into `target/check/final`.
+
 These run in Playwright's image through `tools/browser.sh`, which needs Docker and three free ports from `PORT` (18760 by default), and installs Playwright 1.64.1 and axe from `package-lock.json` with `npm ci` in the image.
 
 `mise run image` builds the container image, answers home and serves the bundles with it, and scans it with Trivy when Trivy is installed. Nothing is pushed.

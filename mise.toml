@@ -140,6 +140,11 @@ description = "Compare each route of atrium --demo with the prototype at 1440 an
 depends = ["build:wasm"]
 run = "PROTOTYPE=\"${PROTOTYPE:-/home/blackbox/work/atrium-concepts/atrium}\" tools/browser.sh node tools/check/parity.mjs"
 
+[tasks.capture]
+description = "Record a short visit to atrium --demo and screenshot home, a page and the machines at 1440 and 390 px, day and night, into target/check/final (needs Docker)"
+depends = ["build:wasm"]
+run = "tools/browser.sh node tools/check/capture.mjs"
+
 [tasks.axe]
 description = "Run axe on each route of atrium --demo at 1440 and 390 px, day and night, scripts on and off (needs Docker)"
 depends = ["build:wasm"]
