@@ -4,10 +4,12 @@
 # repository is mounted at its own path, with the npm packages package-lock.json pins,
 # installed by `npm ci` in the image whenever the lock changes. The command sees
 # ATRIUM_URL, ATRIUM_AWAY_URL and, when PROTOTYPE names the design's prototype folder,
-# PROTOTYPE and PROTOTYPE_PORT. Two CPUs and 4 GB, or the cores CPUSET names.
+# PROTOTYPE and PROTOTYPE_PORT. Two CPUs and 4 GB, or the cores CPUSET names, which the
+# servers share. One core is about as slow as GitHub's runner.
 #
 #   tools/browser.sh npx playwright test -c web/ui/tests/browser/playwright.config.mjs
 #   tools/browser.sh node tools/check/parity.mjs
+#   CPUSET=7 mise run test:browser
 set -eu
 here=$(cd "$(dirname "$0")/.." && pwd)
 cd "$here"
@@ -22,10 +24,12 @@ for p in "$port" "$away" $((port + 2)); do
 done
 cargo build --quiet --locked -p atrium
 mkdir -p target/browser
-target/debug/atrium --demo --viewer tailnet --addr "127.0.0.1:$port" --allowed-hosts 127.0.0.1 \
+pin=""
+[ -n "${CPUSET:-}" ] && pin="taskset -c $CPUSET"
+$pin target/debug/atrium --demo --viewer tailnet --addr "127.0.0.1:$port" --allowed-hosts 127.0.0.1 \
   2>target/browser/demo.log &
 demo=$!
-target/debug/atrium --demo away --viewer tailnet --addr "127.0.0.1:$away" --allowed-hosts 127.0.0.1 \
+$pin target/debug/atrium --demo away --viewer tailnet --addr "127.0.0.1:$away" --allowed-hosts 127.0.0.1 \
   2>target/browser/away.log &
 gone=$!
 trap 'kill "$demo" "$gone" 2>/dev/null || true' EXIT
