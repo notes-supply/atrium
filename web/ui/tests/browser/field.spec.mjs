@@ -14,11 +14,12 @@ const framesOver = async (page, ms) => {
   await page.waitForTimeout(ms);
   return (await framesAsked(page)) - before;
 };
-// Waits until the field has asked for more frames, as it does frame after frame while it
-// moves. A frame takes as long as the machine needs, so this counts frames, not time.
-const keepsAsking = async (page) => {
+// Waits until the page has asked for `count` more frames, as the field does frame after
+// frame while it moves. A frame takes as long as the machine needs, so this counts frames,
+// not time.
+const keepsAsking = async (page, count = 5) => {
   const before = await framesAsked(page);
-  await expect.poll(() => framesAsked(page), 'asks for frame after frame').toBeGreaterThan(before + 5);
+  await expect.poll(() => framesAsked(page), { message: 'asks for frame after frame', timeout: 20_000 }).toBeGreaterThan(before + count);
 };
 
 // Draws one frame through the ?perf bench and copies the canvas in the same task, before
@@ -138,22 +139,24 @@ test('perf: ?perf shows the readout, and nothing shows without it', async ({ pag
   await expect(readout).toContainText('field normal  1440x900 css px');
   await expect(readout).toContainText(/^\s*\d+ fps {3}gap p90 \d+\.\d ms$/m);
   await expect(readout).toContainText(/^cpu {2}med \d+\.\d\d {2}p90 \d+\.\d\d ms$/m);
-  await expect(readout).toContainText(/^gpu {2}(no timer query|\d+\.\d\d ms)$/m);
+  // SwiftShader answers a timer query once its GPU process has caught up with the page,
+  // which on one core took 3.8 to 4.3 s for the first.
+  await expect(readout).toContainText(/^gpu {2}(no timer query|\d+\.\d\d ms)$/m, { timeout: 20_000 });
 });
 
-// How much denser the lattice is under the open palette than across the whole canvas, once
-// the springs have eased it there. Each sample pauses the field, so it resumes after.
+// The springs ease at most 50 ms a frame, so after a hundred frames asked (with ?perf, the
+// readout asks for some) the lattice has had at least the 800 ms it needs to gather under
+// the open palette, more than twice as dense as across the whole canvas.
 async function pulled(page) {
   const palette = await page.locator('dialog.palette').boundingBox();
   const box = [Math.round(palette.x), Math.round(palette.y), Math.round(palette.width), Math.round(palette.height)];
-  await expect.poll(async () => {
-    const [whole, under] = await sample(page, [box]);
-    await page.evaluate(() => window.__field.pause(false));
-    return under.dots / whole.dots;
-  }, 'denser under the palette').toBeGreaterThan(2);
+  await keepsAsking(page, 100);
+  const [whole, under] = await sample(page, [box]);
+  expect(under.dots, 'denser under the palette').toBeGreaterThan(whole.dots * 2);
 }
 
 test('field: the open palette pulls the lattice to itself', async ({ page }) => {
+  await countFrames(page);
   await open(page, 'wiki', 'perf');
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await page.keyboard.press('Control+k');
@@ -165,11 +168,14 @@ test('field: a palette opened before the field starts pulls it too', async ({ pa
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   await page.route(/\/field_bg\.[0-9a-f]+\.wasm$/, async (route) => { await held; await route.continue(); });
+  await countFrames(page);
   await open(page, 'wiki', 'perf');
   await page.keyboard.press('Control+k');
   await expect(page.locator('dialog.palette')).toBeVisible();
   release();
-  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
+  // Only now does the field compile its Wasm and its shaders, in software, which the other
+  // tests do while the page opens.
+  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/, { timeout: 15_000 });
   await pulled(page);
 });
 
