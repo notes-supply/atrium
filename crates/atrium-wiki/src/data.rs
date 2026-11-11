@@ -97,7 +97,7 @@ pub async fn preview(
         None => {
             let path = href.strip_prefix("/wiki/").unwrap_or(&href);
             let path = percent_encoding::percent_decode_str(path).decode_utf8_lossy();
-            match crate::lost::live_page(&mneme, &path).await {
+            match crate::lost::page_at(&mneme, &path).await {
                 Ok(id) => id,
                 Err(error) => return failed(&error),
             }

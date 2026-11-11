@@ -144,6 +144,27 @@ async fn diff(Path(id): Path<String>) -> Response {
     })
 }
 
+/// The live page at a path, from the listing's example, and the example's answer for the
+/// old path it was made with.
+async fn path(Path(asked): Path<String>) -> Response {
+    if asked == "alpha.md" {
+        return json(include_str!("../fixtures/path.json").to_owned());
+    }
+    let pages: Value =
+        serde_json::from_str(include_str!("../fixtures/pages.json")).unwrap_or_default();
+    pages["pages"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|page| page["path"] == asked.as_str() && page["deleted"].is_null())
+        .map_or_else(missing, |page| {
+            json(
+                serde_json::json!({ "id": page["id"], "path": page["path"], "current": true })
+                    .to_string(),
+            )
+        })
+}
+
 fn of_alpha(id: &str, answer: impl FnOnce() -> Response) -> Response {
     if id == ALPHA { answer() } else { missing() }
 }
@@ -162,6 +183,7 @@ fn routes() -> Router {
             "/v1/status",
             get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
         )
+        .route("/v1/paths/{*path}", get(path))
         .route(
             "/v1/questions",
             get(|| async { json(include_str!("../fixtures/questions.json").to_owned()) }),

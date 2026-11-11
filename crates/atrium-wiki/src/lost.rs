@@ -1,6 +1,7 @@
-//! Links written as a page's file, `/wiki/{path}.md`, as pages link to each other. A path is
-//! looked up among the pages now, then among deleted pages and the paths renamed pages had,
-//! so an old link still lands. The prototype's `notFound` shows what the record remembers.
+//! Links written as a page's file, `/wiki/{path}.md`, as pages link to each other. Mneme
+//! finds the page at a path now or before a rename, so an old link still lands. It leaves
+//! deleted pages out, so a path it does not know is looked for among them, and the
+//! prototype's `notFound` shows what the record remembers.
 
 use atrium_ui::Shell;
 use axum::extract::{Path, State};
@@ -13,8 +14,6 @@ use crate::routes::{Failure, bare, page_href, redirect, respond};
 
 /// Mneme's largest page of a listing.
 const STEP: u64 = 500;
-/// Changes read to find a path a page was renamed away from, at most.
-const RENAMES: u64 = 4000;
 
 pub async fn by_path(
     shell: Shell,
@@ -35,11 +34,8 @@ pub fn lost(shell: &Shell) -> Response {
     )
 }
 
-/// Every page, deleted ones too, until `wanted` finds one.
-async fn find_page(
-    mneme: &Mneme,
-    wanted: impl Fn(&Page) -> bool,
-) -> Result<Option<Page>, MnemeError> {
+/// The deleted page that was at `path`, read from every page, deleted ones too.
+async fn deleted_at(mneme: &Mneme, path: &str) -> Result<Option<Page>, MnemeError> {
     let mut offset = 0;
     loop {
         let listing = Listing {
@@ -53,7 +49,11 @@ async fn find_page(
             },
         };
         let found = mneme.pages(listing).await?;
-        if let Some(page) = found.pages.into_iter().find(|page| wanted(page)) {
+        if let Some(page) = found
+            .pages
+            .into_iter()
+            .find(|page| page.path == path && page.deleted.is_some())
+        {
             return Ok(Some(page));
         }
         offset += STEP;
@@ -63,30 +63,9 @@ async fn find_page(
     }
 }
 
-/// The page a rename moved away from `path`, newest rename first.
-async fn renamed_from(mneme: &Mneme, path: &str) -> Result<Option<PageId>, MnemeError> {
-    let mut offset = 0;
-    while offset < RENAMES {
-        let found = mneme.changes(offset, STEP, None).await?;
-        let renamed = found
-            .events
-            .iter()
-            .find(|event| event.kind == EventKind::Renamed && event.from.as_deref() == Some(path));
-        if let Some(event) = renamed {
-            return Ok(Some(event.page.clone()));
-        }
-        offset += STEP;
-        if found.events.is_empty() || offset >= found.total {
-            break;
-        }
-    }
-    Ok(None)
-}
-
-/// The live page at `path`, if one is there now.
-pub async fn live_page(mneme: &Mneme, path: &str) -> Result<Option<PageId>, MnemeError> {
-    let live = find_page(mneme, |page| page.path == path && page.deleted.is_none());
-    Ok(live.await?.map(|page| page.id))
+/// The page at `path` now, or the one a rename moved away from it.
+pub async fn page_at(mneme: &Mneme, path: &str) -> Result<Option<PageId>, MnemeError> {
+    Ok(mneme.path(path).await?.map(|found| found.id))
 }
 
 enum Found {
@@ -96,20 +75,12 @@ enum Found {
 }
 
 async fn look_up(mneme: &Mneme, path: &str) -> Result<Found, MnemeError> {
-    if let Some(id) = live_page(mneme, path).await? {
+    if let Some(id) = page_at(mneme, path).await? {
         return Ok(Found::Here(id));
     }
-    if let Some(page) = find_page(mneme, |page| page.path == path).await? {
-        return Ok(Found::Gone(page));
-    }
-    let Some(id) = renamed_from(mneme, path).await? else {
-        return Ok(Found::Nothing);
-    };
-    match find_page(mneme, |page| page.id == id).await? {
-        Some(page) if page.deleted.is_some() => Ok(Found::Gone(page)),
-        Some(page) => Ok(Found::Here(page.id)),
-        None => Ok(Found::Nothing),
-    }
+    Ok(deleted_at(mneme, path)
+        .await?
+        .map_or(Found::Nothing, Found::Gone))
 }
 
 /// Sends a link written as a file's path to the page that is there now, or that was there.

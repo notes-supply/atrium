@@ -109,6 +109,7 @@ pub struct Params {
     pub order: Option<String>,
     pub page: Option<String>,
     pub offset: Option<String>,
+    pub before: Option<String>,
     pub q: Option<String>,
     pub changed: Option<String>,
     pub created: Option<String>,
@@ -220,6 +221,18 @@ pub async fn losers(mneme: &Mneme, events: &[Event]) -> HashMap<String, Loser> {
         };
         if let Some(lost) = known.get(commit) {
             found.insert(commit.to_owned(), loser(lost));
+        } else if let (Some(author), Ok(_)) = (
+            &event.overlap_author,
+            commit.parse::<crate::mneme::CommitId>(),
+        ) {
+            // The edit that lost the same lines is on the same page.
+            found.insert(
+                commit.to_owned(),
+                Loser {
+                    author: author.clone(),
+                    diff: Some(diff_to(&event.page, commit)),
+                },
+            );
         } else if commit.parse::<crate::mneme::CommitId>().is_ok() {
             if !pages.contains(&&event.page) {
                 pages.push(&event.page);
@@ -256,11 +269,13 @@ pub async fn losers(mneme: &Mneme, events: &[Event]) -> HashMap<String, Loser> {
 fn loser(event: &Event) -> Loser {
     Loser {
         author: event.author.clone(),
-        diff: Some(href(
-            &format!("{}/diff", page_href(&event.page)),
-            &[("to", event.commit.as_str())],
-        )),
+        diff: Some(diff_to(&event.page, event.commit.as_str())),
     }
+}
+
+/// The diff a commit on `page` made.
+fn diff_to(page: &PageId, commit: &str) -> String {
+    href(&format!("{}/diff", page_href(page)), &[("to", commit)])
 }
 
 /// The overlap mark for an event, saying whose edit lost the same lines.

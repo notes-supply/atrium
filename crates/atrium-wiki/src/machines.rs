@@ -188,10 +188,13 @@ pub fn judge(machine: &Machine, record: Option<&Status>, now: i64) -> Copy {
         Some(seen) if now - seen > PATIENCE => concerns.push(Concern::Unseen(Some(seen))),
         Some(_) => {}
     }
-    // The record's head is newer than anything this machine reported, so it has been behind
-    // at least since the head was made.
-    if let Some(since) = record.and_then(|status| status.head_time)
-        && !machine.current
+    // Mneme says when the copy stopped matching. Without that, the record's head is newer
+    // than anything this machine reported, so it has been behind at least since the head
+    // was made.
+    let behind = machine
+        .behind_since
+        .or_else(|| record.and_then(|status| status.head_time));
+    if let Some(since) = behind.filter(|_| !machine.current)
         && now - since > PATIENCE
     {
         concerns.push(Concern::Behind(since));
@@ -577,6 +580,21 @@ mod tests {
             NOW,
         );
         assert_eq!(fresh.want(), Want::Rest);
+    }
+
+    #[test]
+    fn mneme_says_since_when_a_copy_is_behind() {
+        let mut machine = machine("saved", Some(NOW - 60), false);
+        machine.behind_since = Some(NOW - 5 * 60);
+        let lately = judge(&machine, Some(&record(NOW - 3600)), NOW);
+        assert_eq!(
+            lately.want(),
+            Want::Rest,
+            "behind for five minutes, whatever the head's age"
+        );
+        machine.behind_since = Some(NOW - 11 * 60);
+        let long = judge(&machine, Some(&record(NOW - 60)), NOW);
+        assert_eq!(long.concerns, [Concern::Behind(NOW - 11 * 60)]);
     }
 
     #[test]

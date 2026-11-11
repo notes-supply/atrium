@@ -205,9 +205,21 @@ async fn recent_changes_are_grouped_by_day_with_their_overlaps() {
     let events = texts(&reply.body, ".days li");
     assert_eq!(events.len(), 13);
     assert!(
-        events[1].contains("aeolus edited the same lines"),
+        events[1].contains("Writer edited the same lines"),
         "{}",
         events[1]
+    );
+    assert_eq!(
+        attrs(&reply.body, ".days li .ov a", "href"),
+        ["/wiki/page/9441e2ad011c494e/diff?to=0735657cc907aa6c418fac6c1f1277edbe547ec8"],
+        "the author Mneme names, without reading the page's history"
+    );
+    assert!(
+        !atrium
+            .mneme
+            .requests()
+            .iter()
+            .any(|request| request.starts_with("/v1/pages/9441e2ad011c494e/versions"))
     );
 }
 
@@ -317,6 +329,52 @@ async fn a_link_by_file_path_leads_to_the_page_id() {
     }
     assert_eq!(atrium.get("/wiki/nothing.md").await.status, 404);
     assert_eq!(atrium.get("/wiki/greek").await.status, 404);
+    let asked = atrium.mneme.requests();
+    assert!(
+        asked.contains(&"/v1/paths/minnen%20fr%C3%A5n%20gotland.md".to_owned()),
+        "{asked:?}"
+    );
+    assert!(
+        !asked
+            .iter()
+            .any(|request| request.starts_with("/v1/changes")),
+        "no walk over the changes: {asked:?}"
+    );
+}
+
+#[tokio::test]
+async fn older_changes_are_the_days_before_the_time_the_address_names() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    // Monday 9 November 2026 at midnight in Stockholm. The offset is what a Mneme without
+    // `before` would page by, and would show Tuesday again.
+    let reply = atrium
+        .get("/wiki/changes?before=1794178800&offset=3")
+        .await
+        .body;
+    assert_eq!(
+        attrs(&reply, "h2.day time", "datetime"),
+        ["2026-11-08T21:14:00+01:00", "2026-11-07T20:41:00+01:00"]
+    );
+    assert_eq!(
+        attrs(&reply, ".pager a[rel=prev]", "href"),
+        ["/wiki/changes"]
+    );
+}
+
+#[tokio::test]
+async fn a_mneme_that_does_not_page_by_time_pages_by_offset() {
+    let atrium = Atrium::tailnet().await;
+    let reply = atrium.get("/wiki/changes?before=1788225000&offset=5").await;
+    assert_eq!(reply.status, 200);
+    let asked = atrium.mneme.requests();
+    assert!(
+        asked.contains(&"/v1/changes?offset=0&limit=500&before=1788225000".to_owned()),
+        "{asked:?}"
+    );
+    assert!(
+        asked.contains(&"/v1/changes?offset=5&limit=500".to_owned()),
+        "{asked:?}"
+    );
 }
 
 #[tokio::test]

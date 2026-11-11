@@ -2,21 +2,21 @@
   "questions": [
     {
       "page": {
-        "id": "4226c96dd1386f3a",
-        "path": "greek/alpha.md",
-        "title": "Alpha"
+        "id": "9441e2ad011c494e",
+        "path": "AGENTS.md",
+        "title": "Agents"
       },
-      "text": "Should the harbour notes move to their own page?",
-      "updated": 1788226800
+      "text": "Should agents sign their pages?",
+      "updated": 1788225600
     },
     {
       "page": {
-        "id": "dd4e4e0ff93dcba6",
-        "path": "index.md",
-        "title": "Home"
+        "id": "9441e2ad011c494e",
+        "path": "AGENTS.md",
+        "title": "Agents"
       },
-      "text": "Keep the index by hand, or let a tool write it?",
-      "updated": 1788225000
+      "text": "Who reads what an agent wrote?",
+      "updated": 1788225600
     }
   ],
   "total": 2

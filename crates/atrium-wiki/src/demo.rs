@@ -500,6 +500,13 @@ fn event_json(change: &Change) -> Value {
         "added": change.added,
         "removed": change.removed,
         "overlap": change.overlap.map(|(page, version)| commit(page, version)),
+        "overlap_author": change.overlap.and_then(|(page, version)| {
+            changes()
+                .into_iter()
+                .chain(restic_events())
+                .find(|lost| lost.page == page && lost.version == version)
+                .map(|lost| lost.author)
+        }),
     })
 }
 
@@ -605,6 +612,7 @@ struct Params {
     order: Option<String>,
     deleted: Option<bool>,
     since: Option<i64>,
+    before: Option<i64>,
     q: Option<String>,
 }
 
@@ -710,6 +718,7 @@ fn listed(params: &Params, events: Vec<Change>, total: Option<usize>) -> Respons
     let events: Vec<Change> = events
         .into_iter()
         .filter(|change| params.since.is_none_or(|since| at(change.at) >= since))
+        .filter(|change| params.before.is_none_or(|before| at(change.at) < before))
         .collect();
     let total = total.unwrap_or(events.len());
     let shown: Vec<Value> = params.cut(events).iter().map(event_json).collect();
@@ -903,6 +912,24 @@ pub fn routes() -> Router {
         .route("/v1/search", get(search))
         .route("/v1/machines", get(machines))
         .route("/v1/questions", get(questions))
+        .route("/v1/paths/{*path}", get(path))
+}
+
+/// The page at a path now, or the one most recently renamed away from it, as Mneme finds
+/// it: never a deleted page.
+async fn path(Path(asked): Path<String>) -> Response {
+    let found = |page: &PageData, current: bool| {
+        Json(json!({ "id": page_id(page.key), "path": page.path, "current": current }))
+            .into_response()
+    };
+    if let Some(page) = PAGES.iter().find(|page| page.path == asked) {
+        return found(page, true);
+    }
+    changes()
+        .into_iter()
+        .filter(|change| change.from == Some(asked.as_str()))
+        .find_map(|change| page_of(change.page).filter(|page| page.key != GONE.key))
+        .map_or_else(missing, |page| found(page, false))
 }
 
 /// The demo's page ids and commits, which the parity check and tests address pages by.

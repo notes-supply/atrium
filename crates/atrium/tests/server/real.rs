@@ -399,4 +399,24 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
     let changes = atrium.get("/wiki/changes").await;
     say("GET /wiki/changes", texts(&changes.body, "h2.day"));
     assert_eq!(texts(&changes.body, "h2.day").len(), 4, "four days");
+
+    // The offset is past every event, so only Mneme's `before` can fill the page.
+    let days = attrs(&changes.body, "h2.day time", "datetime");
+    let before: jiff::Timestamp = days[1].parse().unwrap();
+    let older = atrium
+        .get(&format!(
+            "/wiki/changes?before={}&offset=999",
+            before.as_second()
+        ))
+        .await;
+    let shown = attrs(&older.body, "h2.day time", "datetime");
+    say(
+        "GET /wiki/changes?before=, the days older than the second",
+        shown.clone(),
+    );
+    assert_ne!(shown, Vec::<String>::new());
+    assert!(
+        shown.iter().all(|day| day.as_str() < days[1].as_str()),
+        "{shown:?}"
+    );
 }

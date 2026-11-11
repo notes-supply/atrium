@@ -11,7 +11,7 @@ use axum::extract::{Query, State};
 use axum::response::Response;
 use maud::{Markup, html};
 
-use crate::mneme::{Event, Mneme};
+use crate::mneme::{Event, Events, Mneme, MnemeError};
 use crate::routes::{
     Failure, Params, RowLook, change_row, choice, href, losers, params, respond, title_of, titles,
 };
@@ -71,17 +71,31 @@ fn side(days: &[&[Event]], shown: &[&Event]) -> Markup {
     }
 }
 
+/// The events from `before` back, when the address says where the older days start and
+/// Mneme pages by time, and whether it did; otherwise from `offset`.
+async fn older(
+    mneme: &Mneme,
+    offset: u64,
+    before: Option<i64>,
+) -> Result<(Events, bool), MnemeError> {
+    if let Some(before) = before
+        && let Some(found) = mneme.changes_before(before, READ).await?
+    {
+        return Ok((found, true));
+    }
+    Ok((mneme.changes(offset, READ, None).await?, false))
+}
+
 async fn changes(
     shell: &Shell,
     mneme: &Mneme,
     query: Result<Query<Params>, QueryRejection>,
 ) -> Result<Page, Failure> {
-    let offset: u64 = choice(params(query)?.offset.as_deref())?.unwrap_or(0);
-    let (found, titles, _) = tokio::try_join!(
-        mneme.changes(offset, READ, None),
-        titles(mneme),
-        mneme.status(),
-    )?;
+    let asked = params(query)?;
+    let offset: u64 = choice(asked.offset.as_deref())?.unwrap_or(0);
+    let before: Option<i64> = choice(asked.before.as_deref())?;
+    let ((found, by_time), titles, _) =
+        tokio::try_join!(older(mneme, offset, before), titles(mneme), mneme.status(),)?;
     let full = u64::try_from(found.events.len()).unwrap_or(0) == READ;
     let days = days(shell, &found.events, full);
     let shown: Vec<&Event> = days.iter().flat_map(|day| day.iter()).collect();
@@ -91,10 +105,26 @@ async fn changes(
     let is_new = |event: &Event| last.is_some_and(|last| event.time > last);
     let new = shown.iter().filter(|event| is_new(event)).count();
     let shown_count = u64::try_from(shown.len()).unwrap_or(0);
-    let older = (offset + shown_count < found.total).then(|| {
+    let skipped = if by_time { 0 } else { offset };
+    // The older days start before the oldest day shown, which is whole: `days` leaves out a
+    // day the read may have cut.
+    let oldest_day = shown.last().and_then(|event| {
+        local
+            .at(event.time)
+            .start_of_day()
+            .ok()
+            .map(|start| start.timestamp().as_second())
+    });
+    let older = (skipped + shown_count < found.total).then(|| {
         href(
             "/wiki/changes",
-            &[("offset", &(offset + shown_count).to_string())],
+            &[
+                (
+                    "before",
+                    &oldest_day.map_or_else(String::new, |at| at.to_string()),
+                ),
+                ("offset", &(offset + shown_count).to_string()),
+            ],
         )
     });
     let newer = (offset > 0).then(|| "/wiki/changes".to_owned());

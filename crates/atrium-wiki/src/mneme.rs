@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
@@ -189,6 +190,9 @@ pub struct Event {
     /// The commit's `Overlap:` trailer: the edit the autosave service set aside.
     #[serde(default)]
     pub overlap: Option<String>,
+    /// The author of the edit `overlap` names, from a Mneme that says it.
+    #[serde(default)]
+    pub overlap_author: Option<String>,
 }
 
 /// One page of events, newest first.
@@ -321,6 +325,19 @@ pub struct Machine {
     /// How many more it keeps out than `skipped` lists.
     #[serde(default, deserialize_with = "lenient")]
     pub skipped_more: Option<u64>,
+    /// When its copy stopped matching the record, from a Mneme that says it.
+    #[serde(default, deserialize_with = "lenient")]
+    pub behind_since: Option<i64>,
+}
+
+/// The page that has a path now, or had it before a rename.
+#[derive(Debug, Deserialize)]
+pub struct PathMatch {
+    pub id: PageId,
+    /// Where the page is now.
+    pub path: String,
+    /// Whether the page is at the path asked for now.
+    pub current: bool,
 }
 
 /// The questions the wiki leaves for its owner: the items under a heading named "Open
@@ -695,6 +712,49 @@ impl Mneme {
         self.get("changes", &paged(offset, limit, since)).await
     }
 
+    /// Events across all pages older than `before`, newest first, or `None` from a Mneme
+    /// that does not page by time yet, which leaves the parameter out and answers from the
+    /// newest.
+    ///
+    /// # Errors
+    ///
+    /// Any [`MnemeError`].
+    pub async fn changes_before(
+        &self,
+        before: i64,
+        limit: u64,
+    ) -> Result<Option<Events>, MnemeError> {
+        let mut query = paged(0, limit, None);
+        query.push(("before", before.to_string()));
+        let events: Events = self.get("changes", &query).await?;
+        Ok(events
+            .events
+            .iter()
+            .all(|event| event.time < before)
+            .then_some(events))
+    }
+
+    /// The page at `path` now, or the page that had it before a rename; `None` when no page
+    /// that is not deleted has had it.
+    ///
+    /// # Errors
+    ///
+    /// Any [`MnemeError`] but [`MnemeError::NotFound`].
+    pub async fn path(&self, path: &str) -> Result<Option<PathMatch>, MnemeError> {
+        let segments: Vec<String> = path
+            .split('/')
+            .map(|segment| utf8_percent_encode(segment, SEGMENT).to_string())
+            .collect();
+        match self
+            .get(&format!("paths/{}", segments.join("/")), &[])
+            .await
+        {
+            Ok(found) => Ok(Some(found)),
+            Err(MnemeError::NotFound) => Ok(None),
+            Err(error) => Err(error),
+        }
+    }
+
     /// Pages that match `words`, sorted and filtered as `listing` says.
     ///
     /// # Errors
@@ -739,6 +799,20 @@ impl Mneme {
         self.get("machines", &[]).await
     }
 }
+
+/// What a part of a URL's path may not hold as it is.
+const SEGMENT: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'/')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'`')
+    .add(b'{')
+    .add(b'}');
 
 fn paged(offset: u64, limit: u64, since: Option<i64>) -> Vec<(&'static str, String)> {
     let mut query = vec![("offset", offset.to_string()), ("limit", limit.to_string())];
@@ -807,7 +881,11 @@ mod tests {
 
         let changes = mneme.changes(0, 50, None).await.unwrap();
         assert_eq!(changes.total, 13);
-        assert_eq!(changes.events[1].overlap.as_deref(), Some("aeolus"));
+        assert_eq!(
+            changes.events[1].overlap.as_deref(),
+            Some("0735657cc907aa6c418fac6c1f1277edbe547ec8")
+        );
+        assert_eq!(changes.events[1].overlap_author.as_deref(), Some("Writer"));
 
         let hits = mneme.search("harbours", listing()).await.unwrap();
         assert_eq!(hits.hits[0].snippet[1].text, "harbours");
@@ -825,7 +903,7 @@ mod tests {
 
         let questions = mneme.questions().await.unwrap().unwrap();
         assert_eq!(questions.total, 2);
-        assert_eq!(questions.questions[0].page.title, "Alpha");
+        assert_eq!(questions.questions[0].page.title, "Agents");
     }
 
     #[tokio::test]
