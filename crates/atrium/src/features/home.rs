@@ -29,6 +29,7 @@ impl Feature for Home {
     fn nav(&self) -> &'static [NavEntry] {
         &[NavEntry {
             label: "Home",
+            title: "Home",
             href: "/",
         }]
     }

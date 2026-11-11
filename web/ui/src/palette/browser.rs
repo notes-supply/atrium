@@ -415,17 +415,12 @@ fn close(engine: &Rc<RefCell<Engine>>) {
     }
 }
 
-/// Every destination: the page's own sections, the wiki's pages, the settings.
+/// Every destination: the sections by their links' `data-title`, the wiki's pages, the settings.
 fn items() -> Vec<Item> {
     let mut items = Vec::new();
     if let Some(root) = dom::root() {
         for link in dom::query(&root, ".index a[data-key]") {
-            let label = link
-                .query_selector(".lb")
-                .ok()
-                .flatten()
-                .and_then(|label| label.text_content())
-                .unwrap_or_default();
+            let label = link.get_attribute("data-title").unwrap_or_default();
             let key = link.get_attribute("data-key").unwrap_or_default();
             items.push(Item {
                 group: "Sections",

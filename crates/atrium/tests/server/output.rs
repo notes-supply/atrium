@@ -187,6 +187,17 @@ async fn every_section_is_a_plain_link_with_its_key() {
         attrs(&home, ".mast .index a", "data-key"),
         ["1", "2", "3", "4", "5"]
     );
+    assert_eq!(
+        attrs(&home, ".mast .index a", "data-title"),
+        [
+            "Home",
+            "Wiki, all pages",
+            "Recent changes",
+            "Search",
+            "Machines"
+        ],
+        "the palette's names for them"
+    );
 }
 
 #[tokio::test]

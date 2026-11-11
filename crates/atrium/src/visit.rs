@@ -1,7 +1,7 @@
 //! The visit every request carries: the reader's clock in the configured zone, their settings
 //! from cookies, and when they were last here, from a cookie the server keeps itself.
 
-use atrium_core::{Local, Prefs, Visit};
+use atrium_core::{Entrance, Local, Prefs, Visit};
 use axum::extract::{Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue};
@@ -14,6 +14,8 @@ use jiff::tz::TimeZone;
 const COOKIE_NAME: &str = "atrium-visit";
 /// A pause longer than this ends a visit.
 const VISIT_GAP: i64 = 30 * 60;
+/// A reader back after longer than this sees the whole entrance again.
+const ENTRANCE_GAP: i64 = 8 * 60 * 60;
 /// How long the cookie is kept: a year.
 const KEEP: i64 = 365 * 24 * 60 * 60;
 
@@ -77,6 +79,15 @@ impl Kept {
     }
 }
 
+/// The whole entrance for a reader with no cookie or whose latest request was over
+/// [`ENTRANCE_GAP`] ago, the short one otherwise.
+fn entrance(kept: Option<Kept>, now: i64) -> Entrance {
+    match kept {
+        Some(kept) if now - kept.latest <= ENTRANCE_GAP => Entrance::Short,
+        _ => Entrance::Full,
+    }
+}
+
 /// Every cookie a request sends, as name and value.
 fn cookies(headers: &HeaderMap) -> impl Iterator<Item = (&str, &str)> {
     headers
@@ -98,15 +109,22 @@ fn secure(headers: &HeaderMap) -> bool {
 pub async fn visit(State(visits): State<Visits>, mut request: Request, next: Next) -> Response {
     let headers = request.headers();
     let prefs = Prefs::from_cookies(cookies(headers));
+    let sent = cookies(headers)
+        .find(|(name, _)| *name == COOKIE_NAME)
+        .and_then(|(_, value)| Kept::parse(value));
     let (now, last, kept) = match visits.clock {
-        Clock::Fixed { now, last } => (now, Some(last), None),
+        Clock::Fixed { now, last } => (
+            now,
+            Some(last),
+            Kept {
+                previous: None,
+                latest: now.as_second(),
+            },
+        ),
         Clock::System => {
             let now = Timestamp::now();
-            let kept = cookies(headers)
-                .find(|(name, _)| *name == COOKIE_NAME)
-                .and_then(|(_, value)| Kept::parse(value));
-            let (last, kept) = Kept::next(kept, now.as_second());
-            (now, last, Some(kept))
+            let (last, kept) = Kept::next(sent, now.as_second());
+            (now, last, kept)
         }
     };
     let secure = secure(headers);
@@ -115,9 +133,10 @@ pub async fn visit(State(visits): State<Visits>, mut request: Request, next: Nex
         local: Local::new(now, visits.zone.clone()),
         last,
         prefs,
+        entrance: entrance(sent, now.as_second()),
     });
     let mut response = next.run(request).await;
-    if let Some(kept) = kept.filter(|_| page) {
+    if page {
         let cookie = format!(
             "{COOKIE_NAME}={}; Path=/; Max-Age={KEEP}; HttpOnly; SameSite=Lax{}",
             kept.write(),
@@ -194,6 +213,20 @@ mod tests {
         for bad in ["", "x.1", "1", "1.y"] {
             assert_eq!(Kept::parse(bad), None, "{bad}");
         }
+    }
+
+    #[test]
+    fn the_whole_entrance_plays_for_a_reader_arriving() {
+        let latest = |latest| {
+            Some(Kept {
+                previous: None,
+                latest,
+            })
+        };
+        assert_eq!(entrance(None, AT), Entrance::Full);
+        assert_eq!(entrance(latest(AT - 60), AT), Entrance::Short);
+        assert_eq!(entrance(latest(AT - ENTRANCE_GAP), AT), Entrance::Short);
+        assert_eq!(entrance(latest(AT - ENTRANCE_GAP - 1), AT), Entrance::Full);
     }
 
     #[test]

@@ -274,6 +274,25 @@ impl Prefs {
     }
 }
 
+/// How a page comes in: the whole entrance for a reader arriving, a short one for the next
+/// page of a sitting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Entrance {
+    #[default]
+    Full,
+    Short,
+}
+
+impl Entrance {
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Full => "full",
+            Self::Short => "short",
+        }
+    }
+}
+
 /// One request's reader: their clock, when they were last here, and their settings.
 #[derive(Debug, Clone)]
 pub struct Visit {
@@ -281,6 +300,7 @@ pub struct Visit {
     /// When the reader's previous visit ended, if Atrium knows of one.
     pub last: Option<i64>,
     pub prefs: Prefs,
+    pub entrance: Entrance,
 }
 
 #[cfg(test)]

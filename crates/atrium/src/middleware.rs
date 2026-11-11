@@ -176,6 +176,7 @@ mod tests {
             local: Local::new(Timestamp::UNIX_EPOCH, TimeZone::UTC),
             last: None,
             prefs: Prefs::default(),
+            entrance: atrium_core::Entrance::Full,
         };
         guard(Router::new().route("/", get(|| async { "inside" })), access)
             .layer(Extension(chrome))

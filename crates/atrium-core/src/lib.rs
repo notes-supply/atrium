@@ -14,7 +14,7 @@ use std::time::Instant;
 use axum::Router;
 use maud::Markup;
 
-pub use crate::visit::{Intensity, Local, Prefs, Theme, Visit};
+pub use crate::visit::{Entrance, Intensity, Local, Prefs, Theme, Visit};
 
 /// Who is asking. A listener serves one kind of viewer, set when the server starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +73,8 @@ impl Access {
 pub struct NavEntry {
     /// The link's text.
     pub label: &'static str,
+    /// Its longer name in the palette, such as "Recent changes" for "Changes".
+    pub title: &'static str,
     /// Where it leads.
     pub href: &'static str,
 }
@@ -96,6 +98,16 @@ pub struct HomeOffer {
     pub tiles: Vec<Markup>,
     /// Whether the feature is out of reach, which changes the page's look.
     pub away: bool,
+}
+
+/// Where a feature searches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Search {
+    /// Where a search form sends its words, as `q`.
+    pub action: &'static str,
+    /// Every page the palette offers as the reader types, as JSON:
+    /// `[{ "t": title, "path", "m": when, "href" }]`.
+    pub pages: &'static str,
 }
 
 /// A feature's part of the home page, once it is ready.
@@ -123,8 +135,9 @@ pub trait Feature: Send + Sync {
     /// Every route the feature answers. The server guards them all with [`Feature::access`].
     fn routes(&self) -> Router;
 
-    /// Where a search form sends its words, when the feature searches.
-    fn search(&self) -> Option<&'static str> {
+    /// Where a search form sends its words and the palette finds its pages, when the
+    /// feature searches.
+    fn search(&self) -> Option<Search> {
         None
     }
 

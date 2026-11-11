@@ -1,27 +1,35 @@
-//! A card for a wiki link, anchored to it with CSS anchor positioning. The server writes the
-//! cards' data into a JSON block, `#previews`, keyed by each link's `data-preview`.
+//! A card for a wiki link, anchored to it with CSS anchor positioning. The article names the
+//! server's preview route in `data-previews`. A link's card is fetched from it, as
+//! `?href=` and the link's `data-preview`, once the reader means it: after a short hover or on
+//! focus. Each answer is kept for the page's life; a failed fetch shows nothing.
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
-use web_sys::js_sys::{JSON, Reflect};
+use web_sys::js_sys::{Reflect, encode_uri_component};
 use web_sys::{Element, HtmlElement, KeyboardEvent};
 
 use crate::dom;
 
 struct Preview {
     card: HtmlElement,
-    cards: JsValue,
+    route: String,
+    cards: HashMap<String, JsValue>,
+    /// The link the reader means now, whose card shows once it is here.
+    wanted: Option<Element>,
     current: Option<Element>,
     timer: Option<i32>,
 }
 
+type Shared = Rc<RefCell<Preview>>;
+
 pub fn mount(article: &Element) -> Result<(), JsValue> {
-    let document = dom::document().ok_or("no document")?;
-    let Some(data) = document.get_element_by_id("previews") else {
+    let Some(route) = article.get_attribute("data-previews") else {
         return Ok(());
     };
+    let document = dom::document().ok_or("no document")?;
     let card: HtmlElement = document.create_element("div")?.dyn_into()?;
     if !web_sys::css::supports_with_value("anchor-name", "--a")?
         || !Reflect::has(&card, &JsValue::from_str("showPopover"))?
@@ -35,7 +43,9 @@ pub fn mount(article: &Element) -> Result<(), JsValue> {
     document.body().ok_or("no body")?.append_child(&card)?;
     let preview = Rc::new(RefCell::new(Preview {
         card,
-        cards: JSON::parse(&data.text_content().unwrap_or_default())?,
+        route,
+        cards: HashMap::new(),
+        wanted: None,
         current: None,
         timer: None,
     }));
@@ -45,7 +55,7 @@ pub fn mount(article: &Element) -> Result<(), JsValue> {
             let mut preview = state.borrow_mut();
             preview.cancel();
             let (state, target) = (Rc::clone(&state), target.clone());
-            let callback = Closure::once_into_js(move || state.borrow_mut().open(&target));
+            let callback = Closure::once_into_js(move || want(&state, &target));
             preview.timer = web_sys::window().and_then(|window| {
                 window
                     .set_timeout_with_callback_and_timeout_and_arguments_0(
@@ -58,7 +68,7 @@ pub fn mount(article: &Element) -> Result<(), JsValue> {
         let state = Rc::clone(&preview);
         dom::on(&link, "pointerleave", move |_| state.borrow_mut().shut());
         let (state, target) = (Rc::clone(&preview), link.clone());
-        dom::on(&link, "focus", move |_| state.borrow_mut().open(&target));
+        dom::on(&link, "focus", move |_| want(&state, &target));
         let state = Rc::clone(&preview);
         dom::on(&link, "blur", move |_| state.borrow_mut().shut());
     }
@@ -71,19 +81,39 @@ pub fn mount(article: &Element) -> Result<(), JsValue> {
     Ok(())
 }
 
-impl Preview {
-    fn open(&mut self, link: &Element) {
-        let _ = self.show(link);
-    }
-
-    fn show(&mut self, link: &Element) -> Result<(), JsValue> {
-        let key = link.get_attribute("data-preview").unwrap_or_default();
-        let data = Reflect::get(&self.cards, &JsValue::from_str(&key))?;
-        if !data.is_object() {
-            return Ok(());
+/// Shows `link`'s card, fetching it first when this page has not yet.
+fn want(state: &Shared, link: &Element) {
+    let key = link.get_attribute("data-preview").unwrap_or_default();
+    let url = {
+        let mut preview = state.borrow_mut();
+        preview.wanted = Some(link.clone());
+        if let Some(data) = preview.cards.get(&key).cloned() {
+            let _ = preview.show(link, &data);
+            return;
         }
+        format!(
+            "{}?href={}",
+            preview.route,
+            String::from(encode_uri_component(&key))
+        )
+    };
+    let (state, link) = (Rc::clone(state), link.clone());
+    dom::fetch(&url, web_sys::Response::json, move |data| {
+        if !data.is_object() {
+            return;
+        }
+        let mut preview = state.borrow_mut();
+        preview.cards.insert(key, data.clone());
+        if preview.wanted.as_ref() == Some(&link) {
+            let _ = preview.show(&link, &data);
+        }
+    });
+}
+
+impl Preview {
+    fn show(&mut self, link: &Element, data: &JsValue) -> Result<(), JsValue> {
         let text = |field: &str| {
-            Reflect::get(&data, &JsValue::from_str(field))
+            Reflect::get(data, &JsValue::from_str(field))
                 .ok()
                 .and_then(|value| value.as_string())
                 .unwrap_or_default()
@@ -120,6 +150,7 @@ impl Preview {
 
     fn shut(&mut self) {
         self.cancel();
+        self.wanted = None;
         if self.card.matches(":popover-open").unwrap_or(false) {
             let _ = self.card.hide_popover();
         }

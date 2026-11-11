@@ -114,4 +114,23 @@ mod tests {
         assert!(css.starts_with("/* Atrium tokens."));
         assert!(css.contains(".pb-fill.pct-62 { width: 62%; }"));
     }
+
+    #[test]
+    fn the_reading_module_finds_its_bar_widths_and_its_slots_stay_hidden() {
+        let css = css();
+        for percent in (0..=100).step_by(5) {
+            let rule = format!(
+                ".pb-fill.pct-{percent} {{ width: {percent}%; }} .pb-n.pct-{percent} {{ left: {percent}%; }}"
+            );
+            assert!(css.contains(&rule), "{rule}");
+        }
+        assert!(css.contains("[hidden] { display: none !important; }"));
+    }
+
+    #[test]
+    fn rules_for_scripts_ask_whether_scripting_is_on() {
+        let css = css();
+        assert!(!css.contains("html.js"));
+        assert!(css.contains("@media (scripting: enabled)"));
+    }
 }

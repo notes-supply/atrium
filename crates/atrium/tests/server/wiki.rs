@@ -423,3 +423,82 @@ async fn the_modules_read_the_page_index_and_previews_as_json() {
     let missing = atrium.get("/wiki/preview.json?href=/wiki/nothing.md").await;
     assert_eq!(missing.status, 404);
 }
+
+#[tokio::test]
+async fn the_palette_finds_its_pages_at_the_url_the_page_names() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let home = atrium.get("/").await.body;
+    let named = attrs(&home, "[data-module~=palette]", "data-pages");
+    assert_eq!(
+        named,
+        ["/wiki/index.json", "/wiki/index.json"],
+        "the Jump link and the command line"
+    );
+    let pages: serde_json::Value = serde_json::from_str(&atrium.get(&named[0]).await.body).unwrap();
+    let pages = pages.as_array().unwrap();
+    assert!(pages.len() > 10, "{pages:?}");
+    for page in pages {
+        let page = page.as_object().unwrap();
+        let mut keys: Vec<_> = page.keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["href", "m", "path", "t"], "{page:?}");
+        assert!(page.values().all(serde_json::Value::is_string), "{page:?}");
+        assert!(page["href"].as_str().unwrap().starts_with("/wiki/page/"));
+    }
+}
+
+#[tokio::test]
+async fn a_page_names_where_its_links_previews_are_fetched() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let pages: serde_json::Value =
+        serde_json::from_str(&atrium.get("/wiki/index.json").await.body).unwrap();
+    let backups = pages
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|page| page["path"] == "homelab/backup-rotation")
+        .unwrap();
+    let page = atrium.get(backups["href"].as_str().unwrap()).await.body;
+    assert_eq!(
+        texts(&page, "script#previews"),
+        Vec::<String>::new(),
+        "no inline previews"
+    );
+    assert_eq!(
+        texts(&page, "article .resume-note[hidden] span"),
+        [""],
+        "the slot the reading module fills"
+    );
+    let route = &attrs(&page, "article[data-module~=preview]", "data-previews")[0];
+    let links = attrs(&page, "article [data-preview]", "data-preview");
+    assert_ne!(links, Vec::<String>::new());
+    for link in links {
+        let reply = atrium.get(&format!("{route}?href={link}")).await;
+        assert_eq!(reply.status, 200, "{link}");
+    }
+}
+
+#[tokio::test]
+async fn the_whole_entrance_plays_once_and_the_next_page_comes_in_short() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let first = atrium.get("/").await;
+    assert_eq!(attrs(&first.body, "html", "data-entrance"), ["full"]);
+    let cookie = first.header("set-cookie").unwrap();
+    let cookie = cookie.split(';').next().unwrap();
+    assert!(cookie.starts_with("atrium-visit="), "{cookie}");
+    let next = atrium.get_with("/wiki", &[("cookie", cookie)]).await;
+    assert_eq!(attrs(&next.body, "html", "data-entrance"), ["short"]);
+}
+
+#[tokio::test]
+async fn search_results_come_in_the_slots_the_swap_module_replaces() {
+    let atrium = Atrium::tailnet().await;
+    let reply = atrium.get("/wiki/search?q=harbours").await;
+    assert_eq!(
+        attrs(&reply.body, "form[data-module=swap]", "action"),
+        ["/wiki/search"]
+    );
+    assert_eq!(texts(&reply.body, "[data-swap-target] h2").len(), 1);
+    assert_eq!(texts(&reply.body, "[data-count]").len(), 1);
+    assert_eq!(texts(&reply.body, "template"), Vec::<String>::new());
+}

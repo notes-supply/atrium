@@ -1,7 +1,7 @@
-import { test, expect, open, cookie } from './test.mjs';
+import { test, expect, open, cookie, url, at } from './test.mjs';
 
 test('a swatch sets the field intensity and remembers it', async ({ page }) => {
-  await open(page, 'index.html');
+  await open(page, 'index');
   const lively = page.locator('.prefs-mast .swatch[data-intensity=lively]');
   await lively.click();
   await expect(page.locator('html')).toHaveAttribute('data-intensity', 'lively');
@@ -12,7 +12,7 @@ test('a swatch sets the field intensity and remembers it', async ({ page }) => {
 
 test('the theme button switches day and night and remembers it', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
-  await open(page, 'wiki.html');
+  await open(page, 'wiki');
   const button = page.locator('.prefs-mast .theme-btn');
   await expect(button).toHaveAttribute('aria-pressed', 'false');
   await button.click();
@@ -25,17 +25,35 @@ test('the theme button switches day and night and remembers it', async ({ page }
 
 test('the theme button follows the system until it is pressed', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
-  await open(page, 'wiki.html');
+  await open(page, 'wiki');
   await expect(page.locator('.prefs-mast .theme-btn')).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('a keys switch in the settings turns single-letter shortcuts off', async ({ page }) => {
-  await open(page, 'wiki.html');
-  await page.locator('.prefs-mast').evaluate((prefs) => {
-    prefs.insertAdjacentHTML('beforeend', '<button type="button" class="keys-btn" aria-pressed="true">Keys</button>');
-  });
-  await page.locator('.prefs-mast .keys-btn').click();
+test('the keys switch turns single-letter keys off, and the server keeps them off', async ({ page }) => {
+  await open(page, 'wiki');
+  const button = page.locator('.prefs-mast .keys-btn');
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await button.click();
   await expect(page.locator('html')).toHaveAttribute('data-keys', 'off');
-  await expect(page.locator('.prefs-mast .keys-btn')).toHaveAttribute('aria-pressed', 'false');
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
   expect(await cookie(page, 'atrium-keys')).toBe('off');
+
+  const served = await page.goto(url('wiki'));
+  expect(await served.text()).toContain('data-keys="off"');
+  await expect(page.locator('time.clock[datetime$="Z"]')).toHaveCount(1);
+  await expect(button).toHaveAttribute('aria-pressed', 'false');
+  await page.keyboard.press('3');
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('dialog.palette')).toBeVisible();
+  await expect(page).toHaveURL(at('wiki'));
+  await page.keyboard.press('Escape');
+
+  await button.click();
+  expect(await cookie(page, 'atrium-keys')).toBe('on');
+  const again = await page.goto(url('wiki'));
+  expect(await again.text()).not.toContain('data-keys=');
+  await expect(page.locator('time.clock[datetime$="Z"]')).toHaveCount(1);
+  await expect(button).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('3');
+  await expect(page).toHaveURL(at('changes'));
 });

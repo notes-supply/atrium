@@ -37,11 +37,11 @@ pub fn since(counted: &str, local: &Local, last: i64) -> Markup {
 
 /// The command line: a search form the palette module turns into a list as you type.
 #[must_use]
-pub fn cmd_line(id: &str, action: &str) -> Markup {
+pub fn cmd_line(id: &str, action: &str, pages: Option<&str>) -> Markup {
     let input = format!("{id}-q");
     let list = format!("{id}-list");
     html! {
-        div.cmd data-module="palette" data-inline {
+        div.cmd data-module="palette" data-inline data-pages=[pages] {
             form.cmd-form action=(action) method="get" role="search" aria-label="Jump or search" {
                 label.vh for=(input) { "Jump to a page, or search the wiki" }
                 span.cmd-prompt aria-hidden="true" { "→" }

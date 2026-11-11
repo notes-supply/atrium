@@ -54,26 +54,14 @@ done
 """
 
 [tasks."test:browser"]
-description = "Drive every browser module in Chromium, in Playwright's image; ATRIUM_PLAYWRIGHT_MODULES names a node_modules with @playwright/test 1.64.1"
+description = "Drive every browser module, every route and axe in Chromium against atrium --demo, in Playwright's image (needs Docker)"
 depends = ["build:wasm"]
-run = """
-set -eu
-modules="${ATRIUM_PLAYWRIGHT_MODULES:?a node_modules folder that holds @playwright/test 1.64.1}"
-here="$(pwd)"
-mkdir -p target/browser
-# Two CPUs and 4 GB, so it runs beside other work; CPUSET pins cores instead of a quota,
-# which throttles the software renderer into slow frames that are not real.
-limit="--cpus=2"
-[ -n "${CPUSET:-}" ] && limit="--cpuset-cpus=$CPUSET"
-# ATRIUM_PROTOTYPE, the prototype's folder, adds the check that the field draws its pixels.
-prototype=""
-[ -n "${ATRIUM_PROTOTYPE:-}" ] && prototype="--volume $ATRIUM_PROTOTYPE:/prototype:ro --env PROTOTYPE=/prototype"
-docker run --rm $limit --memory=4g --init --ipc=host --user "$(id -u):$(id -g)" --env HOME=/tmp \
-  $prototype --env OUT=/out/results --volume "$here:$here:ro" --volume "$modules:/node_modules:ro" \
-  --volume "$here/target/browser:/out" --workdir "$here/web/ui/tests/browser" \
-  mcr.microsoft.com/playwright:v1.64.1-noble \
-  node /node_modules/@playwright/test/cli.js test "$@"
-"""
+run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui/tests/browser/playwright.config.mjs"
+
+[tasks."bench:field"]
+description = "Time the field in SwiftShader; CPUSET pins cores and PROTOTYPE adds the prototype's own field beside it (needs Docker)"
+depends = ["build:wasm"]
+run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui/tests/browser/bench.config.mjs"
 
 [tasks."check:fmt"]
 description = "Check formatting"
@@ -142,12 +130,14 @@ echo "$tag"
 {% endraw %}"""
 
 [tasks.parity]
-description = "Compare each route of atrium --demo with the prototype, scripts off, at 1440 and 390 px, day and night (needs Docker)"
-run = "tools/check/run.sh parity"
+description = "Compare each route of atrium --demo with the prototype at 1440 and 390 px, day and night; scripts off, or on under reduced motion with --scripts (needs Docker)"
+depends = ["build:wasm"]
+run = "PROTOTYPE=\"${PROTOTYPE:-/home/blackbox/work/atrium-concepts/atrium}\" tools/browser.sh node tools/check/parity.mjs"
 
 [tasks.axe]
-description = "Run axe on each route of atrium --demo, scripts off, at 1440 and 390 px, day and night (needs Docker)"
-run = "tools/check/run.sh axe"
+description = "Run axe on each route of atrium --demo at 1440 and 390 px, day and night, scripts on and off (needs Docker)"
+depends = ["build:wasm"]
+run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui/tests/browser/playwright.config.mjs axe.spec"
 
 [tasks.gate]
 description = "Everything that proves the repository is good"

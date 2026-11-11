@@ -1,0 +1,12 @@
+{
+  "name": "atrium-browser-checks",
+  "private": true,
+  "description": "Playwright and axe for the browser tests, the parity check and the captures. Installed with npm ci inside Playwright's image by tools/browser.sh.",
+  "type": "module",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "playwright-core": "1.64.1"
+  }
+}

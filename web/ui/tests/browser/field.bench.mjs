@@ -26,7 +26,10 @@ const stat = (ts) => {
 };
 
 test('field frame time', async ({ browser }) => {
-  const sides = [['wasm', 'wiki.html'], ...(process.env.PROTOTYPE ? [['js', 'prototype/wiki.html']] : [])];
+  const prototype = `http://127.0.0.1:${process.env.PROTOTYPE_PORT}`;
+  const sides = process.env.PROTOTYPE
+    ? [['wasm', `${prototype}/wasm/wiki.html`], ['js', `${prototype}/prototype/wiki.html`]]
+    : [['wasm', `${process.env.ATRIUM_URL}/wiki`]];
   const out = { cpus: null, renderer: null, runs: [] };
   for (const dpr of [1, 2]) {
     for (let round = 0; round < ROUNDS; round++) {

@@ -18,7 +18,7 @@ pub mod stub;
 
 use std::time::Duration;
 
-use atrium_core::{Feature, HomeContext, HomeFuture, Local, NavEntry};
+use atrium_core::{Feature, HomeContext, HomeFuture, Local, NavEntry, Search};
 use axum::Router;
 use maud::{Markup, html};
 
@@ -64,18 +64,22 @@ impl Feature for Wiki {
         &[
             NavEntry {
                 label: "Wiki",
+                title: "Wiki, all pages",
                 href: "/wiki",
             },
             NavEntry {
                 label: "Changes",
+                title: "Recent changes",
                 href: "/wiki/changes",
             },
             NavEntry {
                 label: "Search",
+                title: "Search",
                 href: "/wiki/search",
             },
             NavEntry {
                 label: "Machines",
+                title: "Machines",
                 href: "/wiki/machines",
             },
         ]
@@ -85,8 +89,11 @@ impl Feature for Wiki {
         routes::router(self.mneme.clone())
     }
 
-    fn search(&self) -> Option<&'static str> {
-        Some("/wiki/search")
+    fn search(&self) -> Option<Search> {
+        Some(Search {
+            action: "/wiki/search",
+            pages: "/wiki/index.json",
+        })
     }
 
     fn home<'a>(&'a self, context: &'a HomeContext) -> HomeFuture<'a> {

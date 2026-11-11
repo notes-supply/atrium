@@ -146,7 +146,7 @@ async fn page(shell: &Shell, mneme: &Mneme, id: &str) -> Result<Page, Failure> {
                     div { dt { "Versions" } dd { a href=(history) { (recent.total) } } }
                 }
             }
-            article.paper.surface data-surface data-reading data-module="continue preview" data-page=(id) aria-labelledby="doc-title" {
+            article.paper.surface data-surface data-reading data-module="continue preview" data-page=(id) data-previews="/wiki/preview.json" aria-labelledby="doc-title" {
                 header.doc-head {
                     h1 #doc-title .doc-title { (page.title) }
                     p.doc-meta {
@@ -159,7 +159,7 @@ async fn page(shell: &Shell, mneme: &Mneme, id: &str) -> Result<Page, Failure> {
                         }
                     }
                     // Where the reading module says how far the reader got, from the browser's own record.
-                    p.resume-note hidden {}
+                    p.resume-note hidden { (mark(Mark::New)) span {} }
                 }
                 @if let Some(rendered) = &rendered { (rendered.html) }
             }

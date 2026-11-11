@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use atrium_core::{Feature, HomeContext, HomeOffer, Local, NavEntry, Viewer};
+use atrium_core::{Feature, HomeContext, HomeOffer, Local, NavEntry, Search, Viewer};
 use atrium_ui::components::away_tile;
 use atrium_wiki::Wiki;
 use futures_util::future::join_all;
@@ -58,7 +58,7 @@ impl Site {
     }
 
     /// Where search forms send their words: the first visible feature that searches.
-    pub fn search(&self) -> Option<&'static str> {
+    pub fn search(&self) -> Option<Search> {
         self.visible().find_map(|feature| feature.search())
     }
 

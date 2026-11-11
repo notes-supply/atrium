@@ -11,7 +11,7 @@ use std::fmt;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
-use atrium_core::{HomeOffer, Intensity, Local, NavEntry, Prefs, Visit};
+use atrium_core::{HomeOffer, Intensity, Local, NavEntry, Prefs, Search, Visit};
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
@@ -42,8 +42,8 @@ impl fmt::Debug for Footnote {
 pub struct Chrome {
     /// The site navigation, in registry order. The first entry is key `1`.
     pub nav: Vec<NavEntry>,
-    /// Where a search form sends its words.
-    pub search: Option<&'static str>,
+    /// Where search forms send their words and the palette finds its pages.
+    pub search: Option<Search>,
     /// The stylesheet's URL.
     pub stylesheet: String,
     /// The fonts the first paint needs.
@@ -172,7 +172,13 @@ impl Shell {
     /// Where search forms send their words.
     #[must_use]
     pub fn search(&self) -> &'static str {
-        self.chrome.search.unwrap_or("/")
+        self.chrome.search.map_or("/", |search| search.action)
+    }
+
+    /// Where the palette finds its pages.
+    #[must_use]
+    pub fn pages(&self) -> Option<&'static str> {
+        self.chrome.search.map(|search| search.pages)
     }
 
     /// A 200 page.
@@ -208,13 +214,13 @@ impl Shell {
                         p { "There is no page here." }
                     }
                     @if let Some(search) = self.chrome.search {
-                        (cmd_line("lost", search))
+                        (cmd_line("lost", search.action, Some(search.pages)))
                     }
                 }
                 aside.lost-side.surface data-surface aria-labelledby="ways-h" {
                     h2 #ways-h .rail-h { "Ways on" }
                     a.more href="/" { "Home" }
-                    @if let (Some(search), Some(word)) = (self.chrome.search, &word) {
+                    @if let (Some(search), Some(word)) = (self.chrome.search.map(|search| search.action), &word) {
                         a.more href=(format!("{search}?q={}", words::query(word))) { "Search for “" (word) "”" }
                     }
                     @for (label, href) in ways {
@@ -272,6 +278,7 @@ impl Shell {
             html lang="en" data-hour=(local.hour()) data-intensity=(prefs.intensity.name())
                 data-theme=[prefs.theme.map(atrium_core::Theme::name)]
                 data-keys=[(!prefs.letter_keys).then_some("off")]
+                data-entrance=(self.visit.entrance.name())
             {
                 head {
                     meta charset="utf-8";
@@ -297,7 +304,7 @@ impl Shell {
                             ol {
                                 @for (i, entry) in chrome.nav.iter().enumerate() {
                                     li {
-                                        a href=(entry.href) data-key=(i + 1)
+                                        a href=(entry.href) data-key=(i + 1) data-title=(entry.title)
                                             aria-current=[(current == Some(entry.href)).then_some("page")]
                                         {
                                             span.br aria-hidden="true" { "[" }
@@ -314,7 +321,7 @@ impl Shell {
                                 (local.hm(local.seconds()))
                             }
                             (controls("mast", *prefs))
-                            a.jump.btn href=(self.search()) data-module="palette"
+                            a.jump.btn href=(self.search()) data-module="palette" data-pages=[self.pages()]
                                 aria-keyshortcuts="Control+K Meta+K"
                             {
                                 span { "Jump" }
@@ -382,7 +389,7 @@ pub fn home(shell: &Shell, offers: &[(&'static str, HomeOffer)]) -> Page {
                             @for clause in &offer.said { " " (clause) }
                         }
                     }
-                    (cmd_line("cmd", shell.search()))
+                    (cmd_line("cmd", shell.search(), shell.pages()))
                 }
                 @for (_, offer) in offers {
                     @if let Some(figure) = &offer.figure { (figure) }
@@ -455,7 +462,11 @@ mod tests {
     use super::*;
 
     fn shell(path: &str, prefs: Prefs) -> Shell {
-        let entry = |label, href| NavEntry { label, href };
+        let entry = |label, href| NavEntry {
+            label,
+            title: label,
+            href,
+        };
         Shell::new(
             Arc::new(Chrome {
                 nav: vec![
@@ -463,7 +474,10 @@ mod tests {
                     entry("Wiki", "/wiki"),
                     entry("Changes", "/wiki/changes"),
                 ],
-                search: Some("/wiki/search"),
+                search: Some(Search {
+                    action: "/wiki/search",
+                    pages: "/wiki/index.json",
+                }),
                 stylesheet: "/assets/atrium.css".to_owned(),
                 fonts: Vec::new(),
                 scripts: Scripts::default(),
@@ -477,6 +491,7 @@ mod tests {
                 ),
                 last: None,
                 prefs,
+                entrance: atrium_core::Entrance::Full,
             },
         )
     }
@@ -490,10 +505,14 @@ mod tests {
     #[test]
     fn marks_the_entry_whose_section_holds_the_path() {
         let page = document("/wiki/page/0123456789abcdef", Prefs::default());
-        assert!(page.contains(r#"<a href="/wiki" data-key="2" aria-current="page">"#));
+        assert!(
+            page.contains(r#"<a href="/wiki" data-key="2" data-title="Wiki" aria-current="page">"#)
+        );
         let changes = document("/wiki/changes", Prefs::default());
-        assert!(changes.contains(r#"<a href="/wiki/changes" data-key="3" aria-current="page">"#));
-        assert!(changes.contains(r#"<a href="/wiki" data-key="2">"#));
+        assert!(changes.contains(
+            r#"<a href="/wiki/changes" data-key="3" data-title="Changes" aria-current="page">"#
+        ));
+        assert!(changes.contains(r#"<a href="/wiki" data-key="2" data-title="Wiki">"#));
         assert_eq!(
             shell("/wikipedia", Prefs::default()).current(Current::Path),
             None
@@ -510,7 +529,7 @@ mod tests {
                 letter_keys: false,
             },
         );
-        assert!(page.contains(r#"<html lang="en" data-hour="9" data-intensity="calm" data-theme="dark" data-keys="off">"#), "{page}");
+        assert!(page.contains(r#"<html lang="en" data-hour="9" data-intensity="calm" data-theme="dark" data-keys="off" data-entrance="full">"#), "{page}");
         assert!(
             page.contains(
                 r#"class="swatch" type="button" data-intensity="calm" aria-pressed="true""#
@@ -518,7 +537,9 @@ mod tests {
         );
         assert!(page.contains(r#"class="keys-btn" type="button" aria-pressed="false""#));
         let plain = document("/", Prefs::default());
-        assert!(plain.contains(r#"<html lang="en" data-hour="9" data-intensity="normal">"#));
+        assert!(plain.contains(
+            r#"<html lang="en" data-hour="9" data-intensity="normal" data-entrance="full">"#
+        ));
     }
 
     #[test]

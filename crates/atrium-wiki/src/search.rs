@@ -322,8 +322,6 @@ async fn find(
             }
             (tips())
         }
-        template #search-empty { (empty_state(status.pages)) }
-        template #search-none { (none_state("{q}")) }
     };
     let title = if words.is_empty() {
         "Search the wiki, Atrium".to_owned()

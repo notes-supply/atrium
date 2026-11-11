@@ -37,8 +37,10 @@ kbd { font-size: var(--fs-mono-s); font-weight: 500; letter-spacing: .02em; bord
 .probe { transition: none !important; }
 .vh { position: absolute !important; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .js-only { display: none !important; }
-html.js .js-only { display: flex !important; }
-html.js button.js-only { display: inline-flex !important; }
+@media (scripting: enabled) {
+  html:root .js-only { display: flex !important; }
+  html:root button.js-only { display: inline-flex !important; }
+}
 .skip { position: absolute; left: 16px; top: -60px; z-index: 50; background: var(--paper); padding: 8px 12px; font-family: var(--mono); font-size: var(--fs-mono-l); border: 1px solid var(--ink); }
 .skip:focus { top: 12px; }
 .label { font-size: var(--fs-mono); font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
@@ -130,9 +132,11 @@ html.kbd .index a .k { color: var(--ink); background: var(--accent-tint); }
 @keyframes rise { from { translate: 0 6px; } }
 @keyframes fade { from { opacity: 0; } }
 @media (prefers-reduced-motion: no-preference) {
-  html.js main .surface, html.js .map-stage, html.js .lede { mask-size: 6px 6px; mask-repeat: repeat; animation: develop var(--t-develop) linear backwards, rise var(--t-rise) var(--ease) backwards; }
-  html.js[data-entrance="short"] :is(main .surface, .map-stage, .lede) { animation-duration: 300ms, 420ms; }
-  html.js[data-intensity="calm"] :is(main .surface, .map-stage, .lede) { animation: fade 320ms var(--ease) backwards; }
+  @media (scripting: enabled) {
+    html:root main .surface, html:root .map-stage, html:root .lede { mask-size: 6px 6px; mask-repeat: repeat; animation: develop var(--t-develop) linear backwards, rise var(--t-rise) var(--ease) backwards; }
+    html:root[data-entrance="short"] :is(main .surface, .map-stage, .lede) { animation-duration: 300ms, 420ms; }
+    html:root[data-intensity="calm"] :is(main .surface, .map-stage, .lede) { animation: fade 320ms var(--ease) backwards; }
+  }
   .home .lede { animation-delay: 40ms !important; }
   .home .map-stage { animation-delay: 160ms !important; }
   .home .dock-card { animation-delay: 300ms !important; }
@@ -670,7 +674,7 @@ mark { background: var(--accent-tint); color: var(--ink); padding: 0 .12em; box-
 /* ── phones: one column, the index moves to the thumb ─────────────────── */
 @media (max-width: 899px) {
   .mast { grid-template-columns: auto 1fr auto; padding: 0 var(--frame); gap: 12px; }
-  html.js .mast .prefs-mast { display: none !important; }
+  @media (scripting: enabled) { html:root .mast .prefs-mast { display: none !important; } }
   .mast .index { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--ground); border-top: 1px solid var(--rule); padding: 0 8px env(safe-area-inset-bottom); }
   .mast .index ol { justify-content: space-between; gap: 0; }
   .mast .index a { padding: 14px 6px 16px; font-size: 12px; flex-direction: column; align-items: center; gap: 3px; }
@@ -683,7 +687,7 @@ mark { background: var(--accent-tint); color: var(--ink); padding: 0 .12em; box-
   main > *, .hero > *, .tiles > * { min-width: 0; max-width: 100%; }
   .foot { flex-direction: column; align-items: flex-start; padding: 8px var(--frame) 104px; gap: 16px; }
   .foot-keys { display: none; }
-  html.js .prefs-foot { display: flex !important; }
+  @media (scripting: enabled) { html:root .prefs-foot { display: flex !important; } }
   .prefs-foot .pref-label { display: inline; }
 
   /* home on a phone: the sentence, the command line, then the three places

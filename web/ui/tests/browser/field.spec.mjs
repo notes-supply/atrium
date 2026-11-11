@@ -1,4 +1,6 @@
-import { test, expect, open } from './test.mjs';
+import { test, expect, open, url } from './test.mjs';
+
+const prototype = `http://127.0.0.1:${process.env.PROTOTYPE_PORT}`;
 
 // Counts the field's calls for animation frames, from before the page's own scripts run.
 const countFrames = (page) => page.addInitScript(() => {
@@ -48,7 +50,7 @@ async function sample(page, boxes) {
 }
 
 test('field: draws the lattice, finest and in the colour of trouble around what needs you', async ({ page }) => {
-  await open(page, 'index.html?perf');
+  await open(page, 'index', 'perf');
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   const needs = await page.locator('.map [data-m=aeolus].dock circle').boundingBox();
   const at = [Math.round(needs.x + needs.width / 2) - 60, Math.round(needs.y + needs.height / 2) - 60, 120, 120];
@@ -62,7 +64,7 @@ test('field: draws the lattice, finest and in the colour of trouble around what 
 test('field: draws one pixel per CSS pixel on a dense screen', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
-  await page.goto('wiki.html');
+  await page.goto(url('wiki'));
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   const canvas = await page.locator('canvas.field').evaluate((c) => [c.width, c.height, getComputedStyle(c).imageRendering]);
   expect(canvas).toEqual([1440, 900, 'pixelated']);
@@ -73,7 +75,7 @@ test('field: draws one pixel per CSS pixel on a dense screen', async ({ browser 
 
 test('field: breathes while shown, and stops asking for frames when hidden', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki.html');
+  await open(page, 'wiki');
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   expect(await framesOver(page, 500)).toBeGreaterThan(5);
   await page.evaluate(() => {
@@ -92,7 +94,7 @@ test('field: breathes while shown, and stops asking for frames when hidden', asy
 test('field: holds a still frame under reduced motion', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await countFrames(page);
-  await open(page, 'wiki.html');
+  await open(page, 'wiki');
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await page.waitForTimeout(300);
   expect(await framesOver(page, 600)).toBe(0);
@@ -100,7 +102,7 @@ test('field: holds a still frame under reduced motion', async ({ page }) => {
 
 test('field: settles to a still frame in calm', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki.html');
+  await open(page, 'wiki');
   await page.locator('.prefs-mast .swatch[data-intensity=calm]').click();
   await page.mouse.move(5, 5);
   await page.waitForTimeout(3000);
@@ -109,7 +111,7 @@ test('field: settles to a still frame in calm', async ({ page }) => {
 
 test('field: takes the night colours when the theme switches', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
-  await open(page, 'wiki.html?perf');
+  await open(page, 'wiki', 'perf');
   const [day] = await sample(page, []);
   await page.evaluate(() => window.__field.pause(false));
   await page.locator('.prefs-mast .theme-btn').click();
@@ -120,10 +122,10 @@ test('field: takes the night colours when the theme switches', async ({ page }) 
 });
 
 test('perf: ?perf shows the readout, and nothing shows without it', async ({ page }) => {
-  await open(page, 'wiki.html');
+  await open(page, 'wiki');
   await expect(page.locator('pre.perf')).toHaveCount(0);
   expect(await page.evaluate(() => 'window.__field' in window || window.__field !== undefined)).toBe(false);
-  await open(page, 'wiki.html?perf');
+  await open(page, 'wiki', 'perf');
   const readout = page.locator('pre.perf');
   await expect(readout).toContainText('field normal  1440x900 css px');
   await expect(readout).toContainText(/^\s*\d+ fps {3}gap p90 \d+\.\d ms$/m);
@@ -132,7 +134,7 @@ test('perf: ?perf shows the readout, and nothing shows without it', async ({ pag
 });
 
 test('field: the open palette pulls the lattice to itself', async ({ page }) => {
-  await open(page, 'wiki.html?perf');
+  await open(page, 'wiki', 'perf');
   await page.keyboard.press('Control+k');
   const palette = await page.locator('dialog.palette').boundingBox();
   await page.waitForTimeout(800);
@@ -142,9 +144,9 @@ test('field: the open palette pulls the lattice to itself', async ({ page }) => 
 });
 
 // The field is still under reduced motion: no time, no drift, no entrance. So the
-// prototype's JavaScript and this Wasm must draw the same pixels on the same page.
+// prototype's JavaScript and this Wasm must draw the same pixels on the prototype's page.
 test('field: draws the prototype\'s pixels', async ({ browser }) => {
-  test.skip(!process.env.PROTOTYPE, 'ATRIUM_PROTOTYPE names the prototype folder');
+  test.skip(!process.env.PROTOTYPE, 'PROTOTYPE names the prototype folder');
   test.setTimeout(90_000);
   const frame = async (path) => {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce', colorScheme: 'light' });
@@ -171,8 +173,8 @@ test('field: draws the prototype\'s pixels', async ({ browser }) => {
     await context.close();
     return Buffer.from(pixels, 'base64');
   };
-  const ours = await frame('wiki.html?hour=9&perf');
-  const theirs = await frame('prototype/wiki.html?hour=9&perf');
+  const ours = await frame(`${prototype}/wasm/wiki.html?hour=9&perf`);
+  const theirs = await frame(`${prototype}/prototype/wiki.html?hour=9&perf`);
   expect(ours.length).toBe(theirs.length);
   let dots = 0;
   let differ = 0;
