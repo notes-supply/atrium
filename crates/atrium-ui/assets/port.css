@@ -8,3 +8,7 @@
 .keys-btn[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
 .keys-ico { font: 500 var(--fs-mono-l)/1 var(--mono); }
 .keys-btn[aria-pressed="false"] .keys-ico { text-decoration: line-through; }
+
+/* Slots the browser modules fill, such as "Continue reading", stay out of the layout until
+   then, whatever display their class gives them. */
+[hidden] { display: none !important; }

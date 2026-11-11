@@ -141,7 +141,7 @@ async fn changes(
                     }
                 }
                 nav.pager aria-label="Older changes" {
-                    span { "Showing " (count(u64::try_from(days.len()).unwrap_or(0), "day", "days")) }
+                    span { "Showing " (days.len()) (if days.len() == 1 { " day" } else { " days" }) }
                     span.btns {
                         @if let Some(newer) = &newer { a.btn href=(newer) rel="prev" { "Newest" } }
                         @if let Some(older) = &older { a.btn href=(older) rel="next" { "Older" } }

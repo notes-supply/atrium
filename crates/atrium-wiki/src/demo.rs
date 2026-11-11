@@ -795,7 +795,16 @@ async fn search(Query(params): Query<Params>) -> Response {
                     .contains(&words)
         })
         .map(|page| {
-            let text = page.text;
+            // Mneme cuts its own snippets; the demo cuts as the prototype did: from the
+            // sentence that holds the first match, 200 characters, then an ellipsis.
+            let whole = page.text;
+            let first = whole.to_lowercase().find(&words).unwrap_or(0);
+            let start = whole[..first].rfind(". ").map_or(0, |dot| dot + 2);
+            let end = whole[start..]
+                .char_indices()
+                .nth(200)
+                .map_or(whole.len(), |(i, _)| start + i);
+            let text = &whole[start..end];
             let lower = text.to_lowercase();
             let mut runs = Vec::new();
             let mut rest = 0;
@@ -808,6 +817,9 @@ async fn search(Query(params): Query<Params>) -> Response {
             }
             if rest < text.len() {
                 runs.push(json!({ "text": &text[rest..], "hit": false }));
+            }
+            if end < whole.len() {
+                runs.push(json!({ "text": "…", "hit": false }));
             }
             json!({ "page": page_json(page), "score": 1.0, "snippet": runs })
         })
@@ -847,7 +859,7 @@ async fn machines() -> Response {
                 "seen": at("2026-11-11T09:38"),
                 "reported": at("2026-11-11T09:38"),
                 "state": "blocked",
-                "detail": "The pull would overwrite local edits to homelab/backup-rotation.md.",
+                "detail": "A pull would overwrite its local edits.",
                 "head": commit("acl", 12),
                 "current": false,
                 "skipped": [],

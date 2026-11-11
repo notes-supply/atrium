@@ -158,6 +158,8 @@ async fn page(shell: &Shell, mneme: &Mneme, id: &str) -> Result<Page, Failure> {
                             a href=(format!("{href}/diff")) { "What changed" } "."
                         }
                     }
+                    // Where the reading module says how far the reader got, from the browser's own record.
+                    p.resume-note hidden {}
                 }
                 @if let Some(rendered) = &rendered { (rendered.html) }
             }

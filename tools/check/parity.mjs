@@ -9,16 +9,13 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { extname, join, normalize } from 'node:path';
 import { chromium } from 'playwright';
 import { ROUTES } from './routes.mjs';
+import { SIZES } from './sizes.mjs';
 
 const [proto, atrium, out, ...only] = process.argv.slice(2);
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.woff2': 'font/woff2', '.json': 'application/json' };
 // A channel that moves by more than this counts as a different pixel: enough to ignore
 // antialiasing noise, not enough to ignore a changed glyph or colour.
 const TOLERANCE = 24;
-export const SIZES = {
-  1440: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 },
-  390: { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true },
-};
 
 function serve(dir) {
   const server = createServer(async (req, res) => {

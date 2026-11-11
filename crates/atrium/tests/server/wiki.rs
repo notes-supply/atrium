@@ -384,3 +384,18 @@ async fn a_slow_mneme_is_away_after_the_timeout() {
 async fn a_failing_mneme_is_away() {
     away(Stub::Failing).await;
 }
+
+#[tokio::test]
+async fn home_does_not_wait_for_a_slow_mneme() {
+    let atrium = Atrium::start(Stub::Slow(Duration::from_secs(5)), &["--viewer", "tailnet"]).await;
+    let start = std::time::Instant::now();
+    let home = atrium.get("/").await;
+    let took = start.elapsed();
+    assert_eq!(home.status, 200);
+    assert!(took < Duration::from_millis(900), "home took {took:?}");
+    assert!(
+        home.body.contains("The wiki is out of reach just now."),
+        "{}",
+        home.body
+    );
+}

@@ -244,7 +244,9 @@ fn head(
             p.diff-which { a href=(base) data-carry { (title) } (which) }
             p.diff-sum { (delta(added, removed)) " words, in " (changed) (if changed == 1 { " paragraph" } else { " paragraphs" }) }
             div.diff-tools {
-                a.btn href=(toggle) data-only-changes aria-pressed=(only_changed) { "Only changed paragraphs" }
+                a.btn href=(toggle) data-only-changes {
+                    @if only_changed { "Every paragraph" } @else { "Only changed paragraphs" }
+                }
             }
         }
     }
