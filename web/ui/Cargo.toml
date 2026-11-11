@@ -1,0 +1,59 @@
+[package]
+name = "atrium-web-ui"
+description = "Every small behaviour of Atrium's pages as one Wasm bundle, each module mounted by its data-module name."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+wasm-bindgen.workspace = true
+web-sys = { workspace = true, features = [
+  "console",
+  "css",
+  "CustomEvent",
+  "CustomEventInit",
+  "Document",
+  "DomParser",
+  "DomTokenList",
+  "DomRect",
+  "DomRectList",
+  "Element",
+  "Event",
+  "EventTarget",
+  "FocusEvent",
+  "FocusOptions",
+  "FormData",
+  "HtmlDetailsElement",
+  "HtmlDialogElement",
+  "HtmlDocument",
+  "HtmlElement",
+  "HtmlFormElement",
+  "HtmlInputElement",
+  "HtmlTimeElement",
+  "IntersectionObserver",
+  "IntersectionObserverEntry",
+  "IntersectionObserverInit",
+  "History",
+  "KeyboardEvent",
+  "Location",
+  "MediaQueryList",
+  "Navigator",
+  "Node",
+  "NodeList",
+  "Response",
+  "ScrollBehavior",
+  "Storage",
+  "SupportedType",
+  "Text",
+  "Url",
+  "ScrollIntoViewOptions",
+  "ScrollLogicalPosition",
+  "UrlSearchParams",
+  "Window",
+] }
+
+[dev-dependencies]
+brotli = { version = "9.1.1", default-features = false, features = ["std"] }

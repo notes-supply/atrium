@@ -1,0 +1,49 @@
+[package]
+name = "atrium-web-field"
+description = "The WebGL2 dot field behind Atrium's pages, and its ?perf readout, as one Wasm bundle."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+wasm-bindgen.workspace = true
+web-sys = { workspace = true, features = [
+  "AddEventListenerOptions",
+  "CanvasRenderingContext2d",
+  "console",
+  "ContextAttributes2d",
+  "css",
+  "CssStyleDeclaration",
+  "CustomEvent",
+  "Document",
+  "DomRect",
+  "DomTokenList",
+  "Element",
+  "Event",
+  "EventTarget",
+  "HtmlCanvasElement",
+  "HtmlElement",
+  "ImageData",
+  "Location",
+  "MediaQueryList",
+  "MouseEvent",
+  "Node",
+  "NodeList",
+  "Performance",
+  "PointerEvent",
+  "UrlSearchParams",
+  "WebGl2RenderingContext",
+  "WebGlContextAttributes",
+  "WebGlFramebuffer",
+  "WebGlPowerPreference",
+  "WebGlProgram",
+  "WebGlQuery",
+  "WebGlShader",
+  "WebGlTexture",
+  "WebGlUniformLocation",
+  "WebGlVertexArrayObject",
+  "Window",
+] }

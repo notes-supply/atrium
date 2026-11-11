@@ -1,0 +1,78 @@
+import { test, expect, open } from './test.mjs';
+
+test('a number jumps to its section', async ({ page }) => {
+  await open(page, 'index.html');
+  await page.keyboard.press('3');
+  await expect(page).toHaveURL(/changes\.html$/);
+});
+
+test('/ focuses the command line on home and opens the palette elsewhere', async ({ page }) => {
+  await open(page, 'index.html');
+  await page.keyboard.press('/');
+  await expect(page.locator('#cmd-q')).toBeFocused();
+  await open(page, 'wiki.html');
+  await page.keyboard.press('/');
+  await expect(page.locator('dialog.palette')).toBeVisible();
+});
+
+test('/ focuses the search field on the search page', async ({ page }) => {
+  await open(page, 'search.html');
+  await page.keyboard.press('/');
+  await expect(page.locator('#q')).toBeFocused();
+});
+
+test('t switches the theme and f steps the field', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await open(page, 'wiki.html');
+  await page.keyboard.press('t');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+  await page.keyboard.press('f');
+  await expect(page.locator('html')).toHaveAttribute('data-intensity', 'lively');
+  await page.keyboard.press('f');
+  await expect(page.locator('html')).toHaveAttribute('data-intensity', 'calm');
+});
+
+test('j and k move through the rows and Enter opens one', async ({ page }) => {
+  await open(page, 'changes.html');
+  const rows = page.locator('main [data-row]');
+  await page.keyboard.press('j');
+  await expect(rows.nth(0)).toBeFocused();
+  await expect(page.locator('html')).toHaveClass(/\bkbd\b/);
+  await page.keyboard.press('j');
+  await expect(rows.nth(1)).toBeFocused();
+  await page.keyboard.press('k');
+  await page.keyboard.press('k');
+  await expect(rows.nth(0)).toBeFocused();
+  const href = await rows.nth(0).getAttribute('href');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(new RegExp(`${href.replace('.', '\\.')}$`));
+});
+
+test('the pointer hides the keyboard hints', async ({ page }) => {
+  await open(page, 'wiki.html');
+  await page.keyboard.press('Tab');
+  await expect(page.locator('html')).toHaveClass(/\bkbd\b/);
+  await page.mouse.down();
+  await expect(page.locator('html')).not.toHaveClass(/\bkbd\b/);
+});
+
+test('keys typed into a field stay there', async ({ page }) => {
+  await open(page, 'index.html');
+  await page.locator('#cmd-q').focus();
+  await page.keyboard.type('3t');
+  await expect(page.locator('#cmd-q')).toHaveValue('3t');
+  await expect(page).toHaveURL(/index\.html$/);
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+});
+
+test('with single-letter keys off, only chords work', async ({ page }) => {
+  await open(page, 'wiki.html');
+  await page.locator('html').evaluate((html) => { html.dataset.keys = 'off'; });
+  await page.keyboard.press('3');
+  await page.keyboard.press('t');
+  await page.keyboard.press('j');
+  await expect(page).toHaveURL(/wiki\.html$/);
+  await expect(page.locator('html')).not.toHaveAttribute('data-theme');
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('dialog.palette')).toBeVisible();
+});

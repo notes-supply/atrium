@@ -17,9 +17,17 @@ use crate::middleware::hex;
 
 /// The module loader, the only script a page loads.
 pub const LOADER: &[u8] = include_bytes!("../../../web/loader.js");
-/// The palette's glue and module, as `mise run build:wasm` leaves them.
-pub const PALETTE_GLUE: &[u8] = include_bytes!("../../../target/web/palette.js");
-pub const PALETTE_WASM: &[u8] = include_bytes!("../../../target/web/palette_bg.wasm");
+/// The two bundles' glue and modules, as `mise run build:wasm` leaves them. The loader's
+/// own `<script>` element names their URLs in `data-ui`, `data-ui-wasm`, `data-field` and
+/// `data-field-wasm`.
+pub const UI_GLUE: &[u8] = include_bytes!("../../../target/web/ui.js");
+pub const UI_WASM: &[u8] = include_bytes!("../../../target/web/ui_bg.wasm");
+#[expect(dead_code, reason = "the templates do not draw the field yet")]
+pub const FIELD_GLUE: &[u8] = include_bytes!("../../../target/web/field.js");
+#[expect(dead_code, reason = "the templates do not draw the field yet")]
+pub const FIELD_WASM: &[u8] = include_bytes!("../../../target/web/field_bg.wasm");
+/// The names the templates use until they name the bundles.
+pub use {UI_GLUE as PALETTE_GLUE, UI_WASM as PALETTE_WASM};
 
 /// Every asset by its hashed name, such as `atrium.0123456789abcdef.css`.
 #[derive(Debug, Default)]
