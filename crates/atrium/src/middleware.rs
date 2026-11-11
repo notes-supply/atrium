@@ -157,7 +157,7 @@ mod tests {
     use super::*;
 
     use atrium_core::{Local, Prefs, Visit};
-    use atrium_ui::{Chrome, Footnote, Module};
+    use atrium_ui::{Chrome, Footnote, Scripts};
     use axum::routing::get;
     use jiff::Timestamp;
     use jiff::tz::TimeZone;
@@ -169,11 +169,7 @@ mod tests {
             search: None,
             stylesheet: String::new(),
             fonts: Vec::new(),
-            loader: String::new(),
-            palette: Module {
-                glue: String::new(),
-                wasm: String::new(),
-            },
+            scripts: Scripts::default(),
             footnote: Footnote(Arc::new(|_| None)),
         });
         let visit = Visit {

@@ -12,8 +12,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use atrium_core::Viewer;
-use atrium_ui::{Chrome, Footnote, Module, Shell};
-use axum::body::Bytes;
+use atrium_ui::{Chrome, Footnote, Shell};
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
@@ -108,15 +107,7 @@ pub async fn run(config: Config) -> Result<()> {
 pub async fn app(config: &Config) -> Result<Router> {
     let mut assets = Assets::default();
     let (stylesheet, fonts) = assets.add_styles();
-    let loader = assets.add("loader", "js", Bytes::from_static(assets::LOADER));
-    let palette = Module {
-        glue: assets.add("palette", "js", Bytes::from_static(assets::PALETTE_GLUE)),
-        wasm: assets.add(
-            "palette_bg",
-            "wasm",
-            Bytes::from_static(assets::PALETTE_WASM),
-        ),
-    };
+    let scripts = assets.add_scripts();
     let (mneme_url, clock) = match config.demo {
         Some(demo) => (
             atrium_wiki::demo::serve(demo == Demo::Away).await?,
@@ -134,8 +125,7 @@ pub async fn app(config: &Config) -> Result<Router> {
         search: site.search(),
         stylesheet,
         fonts,
-        loader,
-        palette,
+        scripts,
         footnote: Footnote(Arc::new(move |local| footnotes.footnote(local))),
     });
     let visits = Visits {

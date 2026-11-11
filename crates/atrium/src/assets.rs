@@ -12,22 +12,17 @@ use axum::response::{IntoResponse, Response};
 use sha2::{Digest, Sha256};
 
 use atrium_ui::assets::{DITHER, FONTS, PRELOADED, stylesheet};
+use atrium_ui::{Bundle, Scripts};
 
 use crate::middleware::hex;
 
 /// The module loader, the only script a page loads.
-pub const LOADER: &[u8] = include_bytes!("../../../web/loader.js");
-/// The two bundles' glue and modules, as `mise run build:wasm` leaves them. The loader's
-/// own `<script>` element names their URLs in `data-ui`, `data-ui-wasm`, `data-field` and
-/// `data-field-wasm`.
-pub const UI_GLUE: &[u8] = include_bytes!("../../../target/web/ui.js");
-pub const UI_WASM: &[u8] = include_bytes!("../../../target/web/ui_bg.wasm");
-#[expect(dead_code, reason = "the templates do not draw the field yet")]
-pub const FIELD_GLUE: &[u8] = include_bytes!("../../../target/web/field.js");
-#[expect(dead_code, reason = "the templates do not draw the field yet")]
-pub const FIELD_WASM: &[u8] = include_bytes!("../../../target/web/field_bg.wasm");
-/// The names the templates use until they name the bundles.
-pub use {UI_GLUE as PALETTE_GLUE, UI_WASM as PALETTE_WASM};
+const LOADER: &[u8] = include_bytes!("../../../web/loader.js");
+/// The two bundles' glue and modules, as `mise run build:wasm` leaves them.
+const UI_GLUE: &[u8] = include_bytes!("../../../target/web/ui.js");
+const UI_WASM: &[u8] = include_bytes!("../../../target/web/ui_bg.wasm");
+const FIELD_GLUE: &[u8] = include_bytes!("../../../target/web/field.js");
+const FIELD_WASM: &[u8] = include_bytes!("../../../target/web/field_bg.wasm");
 
 /// Every asset by its hashed name, such as `atrium.0123456789abcdef.css`.
 #[derive(Debug, Default)]
@@ -54,6 +49,21 @@ impl Assets {
             .filter_map(|stem| urls.get(stem).cloned())
             .collect();
         (self.add("atrium", "css", css), preloaded)
+    }
+
+    /// Adds the loader and the two bundles it starts, and returns their URLs.
+    pub fn add_scripts(&mut self) -> Scripts {
+        let mut bundle = |stem: &str, glue: &'static [u8], wasm: &'static [u8]| Bundle {
+            glue: self.add(stem, "js", Bytes::from_static(glue)),
+            wasm: self.add(&format!("{stem}_bg"), "wasm", Bytes::from_static(wasm)),
+        };
+        let ui = bundle("ui", UI_GLUE, UI_WASM);
+        let field = bundle("field", FIELD_GLUE, FIELD_WASM);
+        Scripts {
+            loader: self.add("loader", "js", Bytes::from_static(LOADER)),
+            ui,
+            field,
+        }
     }
 
     /// Adds `bytes` as `stem` with `extension`, and returns the URL it is served at.

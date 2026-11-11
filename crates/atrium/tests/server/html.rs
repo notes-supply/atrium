@@ -8,7 +8,7 @@ fn select<'a>(page: &'a Html, selector: &str) -> Vec<scraper::ElementRef<'a>> {
 
 /// Fails the test, naming `path`, where a page breaks a rule: inline script, `style`
 /// attributes or elements, event-handler attributes, `javascript:` links, a script budget
-/// over one deferred loader, no language, not exactly one `h1`, or no working skip link.
+/// over one deferred loader that names both bundles, no language, not exactly one `h1`, or no working skip link.
 pub fn check(path: &str, body: &str) {
     let page = Html::parse_document(body);
     for element in page.root_element().descendent_elements() {
@@ -46,6 +46,15 @@ pub fn check(path: &str, body: &str) {
         );
         assert!(script.value().attr("src").is_some(), "{path}: external");
         assert_eq!(script.inner_html().trim(), "", "{path}: no inline script");
+        for bundle in ["data-ui", "data-ui-wasm", "data-field", "data-field-wasm"] {
+            assert!(
+                script
+                    .value()
+                    .attr(bundle)
+                    .is_some_and(|url| !url.is_empty()),
+                "{path}: the loader names {bundle}"
+            );
+        }
     }
 
     assert_eq!(

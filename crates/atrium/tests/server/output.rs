@@ -148,20 +148,25 @@ async fn the_modules_load_through_one_loader_of_at_most_a_kilobyte() {
         reply.header("cache-control"),
         Some("public, max-age=31536000, immutable")
     );
-    let glue = atrium
-        .get(&attrs(&home, ".jump[data-module=palette]", "data-glue")[0])
-        .await;
-    assert_eq!(glue.status, 200);
-    assert!(
-        glue.body.contains(" as default };"),
-        "the default export the loader calls"
-    );
-    let wasm = atrium
-        .get(&attrs(&home, ".jump[data-module=palette]", "data-wasm")[0])
-        .await;
-    assert_eq!(wasm.status, 200);
-    assert_eq!(wasm.header("content-type"), Some("application/wasm"));
-    assert!(wasm.body.as_bytes().starts_with(b"\0asm"), "a Wasm module");
+    for bundle in ["ui", "field"] {
+        let glue = atrium
+            .get(&attrs(&home, "script", &format!("data-{bundle}"))[0])
+            .await;
+        assert_eq!(glue.status, 200, "{bundle}");
+        assert!(
+            glue.body.contains(" as default };"),
+            "{bundle}: the default export the loader calls"
+        );
+        let wasm = atrium
+            .get(&attrs(&home, "script", &format!("data-{bundle}-wasm"))[0])
+            .await;
+        assert_eq!(wasm.status, 200, "{bundle}");
+        assert_eq!(wasm.header("content-type"), Some("application/wasm"));
+        assert!(
+            wasm.body.as_bytes().starts_with(b"\0asm"),
+            "{bundle}: a Wasm module"
+        );
+    }
 }
 
 #[tokio::test]

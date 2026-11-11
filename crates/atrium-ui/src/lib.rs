@@ -48,16 +48,25 @@ pub struct Chrome {
     pub stylesheet: String,
     /// The fonts the first paint needs.
     pub fonts: Vec<String>,
-    /// The module loader's URL: the page's one script.
-    pub loader: String,
-    /// The command palette's module.
-    pub palette: Module,
+    /// The page's one script and the bundles it starts.
+    pub scripts: Scripts,
     pub footnote: Footnote,
 }
 
-/// A Wasm module's files, as the loader reads them from the element that names the module.
-#[derive(Debug, Clone)]
-pub struct Module {
+/// The module loader and the two Wasm bundles it starts, which its own `<script>` names.
+#[derive(Debug, Clone, Default)]
+pub struct Scripts {
+    /// The loader's URL: the page's one script.
+    pub loader: String,
+    /// Every small behaviour.
+    pub ui: Bundle,
+    /// The WebGL background.
+    pub field: Bundle,
+}
+
+/// A Wasm bundle's files.
+#[derive(Debug, Clone, Default)]
+pub struct Bundle {
     /// The URL of its JavaScript glue.
     pub glue: String,
     /// The URL of its `.wasm`.
@@ -274,7 +283,9 @@ impl Shell {
                         link rel="preload" href=(font) as="font" type="font/woff2" crossorigin;
                     }
                     link rel="stylesheet" href=(chrome.stylesheet);
-                    script type="module" src=(chrome.loader) {}
+                    script type="module" src=(chrome.scripts.loader)
+                        data-ui=(chrome.scripts.ui.glue) data-ui-wasm=(chrome.scripts.ui.wasm)
+                        data-field=(chrome.scripts.field.glue) data-field-wasm=(chrome.scripts.field.wasm) {}
                 }
                 body data-module=(modules) {
                     a.skip href={ "#" (MAIN) } { "Skip to content" }
@@ -304,7 +315,6 @@ impl Shell {
                             }
                             (controls("mast", *prefs))
                             a.jump.btn href=(self.search()) data-module="palette"
-                                data-glue=(chrome.palette.glue) data-wasm=(chrome.palette.wasm)
                                 aria-keyshortcuts="Control+K Meta+K"
                             {
                                 span { "Jump" }
@@ -456,11 +466,7 @@ mod tests {
                 search: Some("/wiki/search"),
                 stylesheet: "/assets/atrium.css".to_owned(),
                 fonts: Vec::new(),
-                loader: "/assets/loader.js".to_owned(),
-                palette: Module {
-                    glue: "/assets/palette.js".to_owned(),
-                    wasm: "/assets/palette_bg.wasm".to_owned(),
-                },
+                scripts: Scripts::default(),
                 footnote: Footnote(Arc::new(|_| None)),
             }),
             path,
