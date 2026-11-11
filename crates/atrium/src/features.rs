@@ -1,26 +1,29 @@
 //! The registry: every feature, listed once. The router, the navigation, the home page and
 //! the command palette all come from this list.
 
-mod clock;
 mod home;
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use anyhow::Result;
-use atrium_core::{Command, Feature, NavEntry, Tile, Viewer};
+use atrium_core::{Feature, HomeContext, HomeOffer, Local, NavEntry, Viewer};
+use atrium_ui::components::away_tile;
 use atrium_wiki::Wiki;
 use futures_util::future::join_all;
+use maud::Markup;
 
 use crate::Config;
 
+/// How much longer than the tiles' deadline home waits for a feature that overruns it.
+const GRACE: Duration = Duration::from_millis(100);
+
 /// Every feature, in the order the navigation lists them.
-pub fn registry(config: &Config) -> Result<Vec<Arc<dyn Feature>>> {
+pub fn registry(config: &Config, mneme_url: &str) -> Result<Vec<Arc<dyn Feature>>> {
     let timeout = Duration::from_millis(config.mneme_timeout_ms);
     Ok(vec![
         Arc::new(home::Home),
-        Arc::new(Wiki::new(&config.mneme_url, timeout)?),
-        Arc::new(clock::Clock),
+        Arc::new(Wiki::new(mneme_url, timeout)?),
     ])
 }
 
@@ -49,28 +52,34 @@ impl Site {
 
     pub fn nav(&self) -> Vec<NavEntry> {
         self.visible()
-            .filter_map(|feature| {
-                feature.nav().map(|href| NavEntry {
-                    label: feature.name(),
-                    href,
-                })
-            })
+            .flat_map(|feature| feature.nav().iter().copied())
             .collect()
     }
 
-    pub fn commands(&self) -> Vec<Command> {
-        self.visible()
-            .flat_map(|feature| feature.commands().iter().copied())
-            .collect()
+    /// Where search forms send their words: the first visible feature that searches.
+    pub fn search(&self) -> Option<&'static str> {
+        self.visible().find_map(|feature| feature.search())
     }
 
-    /// Every visible feature's tiles, fetched at once, in registry order.
-    pub async fn tiles(&self) -> Vec<Tile> {
-        join_all(self.visible().map(|feature| feature.tiles()))
-            .await
-            .into_iter()
-            .flatten()
-            .collect()
+    /// The footer's line: the first visible feature's that has one.
+    pub fn footnote(&self, local: &Local) -> Option<Markup> {
+        self.visible().find_map(|feature| feature.footnote(local))
+    }
+
+    /// Every visible feature's part of home, fetched at once, in registry order, each with
+    /// its name. A feature that overruns the deadline is shown as away.
+    pub async fn home(&self, context: &HomeContext) -> Vec<(&'static str, HomeOffer)> {
+        let deadline = tokio::time::Instant::from_std(context.deadline) + GRACE;
+        join_all(self.visible().map(|feature| async move {
+            let offer = tokio::time::timeout_at(deadline, feature.home(context))
+                .await
+                .unwrap_or_else(|_| HomeOffer {
+                    tiles: vec![away_tile(feature.id(), feature.name())],
+                    ..HomeOffer::default()
+                });
+            (feature.name(), offer)
+        }))
+        .await
     }
 }
 
@@ -101,17 +110,16 @@ mod tests {
 
     #[test]
     fn feature_ids_are_unique() {
-        let features = registry(&config()).unwrap();
+        let features = registry(&config(), "http://mneme").unwrap();
         assert_eq!(unique(features.iter().map(|feature| feature.id())), Ok(()));
     }
 
     #[test]
-    fn command_keys_are_unique() {
-        let site = Site::new(registry(&config()).unwrap(), Viewer::Tailnet);
-        let commands = site.commands();
-        assert_eq!(
-            unique(commands.iter().filter_map(|command| command.keys)),
-            Ok(())
+    fn navigation_addresses_are_unique() {
+        let site = Site::new(
+            registry(&config(), "http://mneme").unwrap(),
+            Viewer::Tailnet,
         );
+        assert_eq!(unique(site.nav().iter().map(|entry| entry.href)), Ok(()));
     }
 }

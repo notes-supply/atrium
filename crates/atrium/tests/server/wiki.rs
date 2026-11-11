@@ -43,19 +43,19 @@ async fn home_shows_the_latest_changes_as_a_tile() {
     let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
-    assert_eq!(texts(&home.body, "#wiki-changes h2"), ["Recent changes"]);
+    assert_eq!(texts(&home.body, ".tile.changes h2"), ["Recent changes"]);
     assert_eq!(
-        attrs(&home.body, "#wiki-changes h2 a", "href"),
+        attrs(&home.body, ".tile.changes a.more", "href"),
         ["/wiki/changes"]
     );
-    let changes = texts(&home.body, "#wiki-changes ol li");
-    assert_eq!(changes.len(), 5, "{changes:?}");
+    let changes = texts(&home.body, ".tile.changes ol li");
+    assert_eq!(changes.len(), 8, "{changes:?}");
     assert!(
         changes[0].contains("greek/alpha.md edited"),
         "{}",
         changes[0]
     );
-    assert_eq!(atrium.mneme.requests(), ["/v1/changes?offset=0&limit=5"]);
+    assert_eq!(atrium.mneme.requests(), ["/v1/changes?offset=0&limit=8"]);
 }
 
 #[tokio::test]
@@ -283,9 +283,12 @@ async fn away(stub: Stub) {
     }
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
-    assert_eq!(
-        texts(&home.body, "#wiki-changes p"),
-        ["The wiki is briefly away."]
+    assert!(
+        texts(&home.body, ".tiles p")
+            .iter()
+            .any(|text| text.starts_with("The wiki is briefly away")),
+        "{}",
+        home.body
     );
 }
 

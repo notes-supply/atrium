@@ -10,7 +10,12 @@ async fn an_anonymous_listener_refuses_every_private_route() {
     let atrium = Atrium::start(Stub::Fixtures, &["--viewer", "anonymous"]).await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 404);
-    assert_eq!(home.body, atrium.get("/no-such-page").await.body);
+    let unknown = atrium.get("/no-such-page").await.body;
+    assert_eq!(
+        home.body.replace("404, /<", "404, PATH<"),
+        unknown.replace("404, /no-such-page<", "404, PATH<"),
+        "a refusal reads as an address with nothing at it"
+    );
 }
 
 #[tokio::test]
@@ -26,9 +31,13 @@ async fn the_tailnet_listener_serves_home_and_links_it() {
     let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
-    assert_eq!(texts(&home.body, "h1"), ["Atrium"]);
     assert_eq!(
-        texts(&home.body, "header nav a[aria-current=page]"),
+        attrs(&home.body, "h1 time", "datetime").len(),
+        1,
+        "home is headed by the date"
+    );
+    assert_eq!(
+        texts(&home.body, "header nav a[aria-current=page] .lb"),
         ["Home"]
     );
 }

@@ -16,13 +16,13 @@ atrium-wiki.workspace = true
 axum.workspace = true
 clap.workspace = true
 futures-util.workspace = true
+jiff.workspace = true
 maud.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
 tokio.workspace = true
 
 [dev-dependencies]
-atrium-wiki = { workspace = true, features = ["stub"] }
 reqwest.workspace = true
 scraper.workspace = true
 tempfile.workspace = true

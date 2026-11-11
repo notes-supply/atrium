@@ -75,6 +75,7 @@ dependencies = [
  "axum",
  "clap",
  "futures-util",
+ "jiff",
  "maud",
  "reqwest",
  "scraper",
@@ -90,6 +91,7 @@ name = "atrium-core"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "jiff",
  "maud",
 ]
 
@@ -109,6 +111,7 @@ dependencies = [
  "axum",
  "jiff",
  "maud",
+ "percent-encoding",
 ]
 
 [[package]]
@@ -119,6 +122,7 @@ dependencies = [
  "atrium-ui",
  "axum",
  "comrak",
+ "jiff",
  "maud",
  "percent-encoding",
  "reqwest",
@@ -752,6 +756,7 @@ checksum = "fefca06093eeaed707a905795e68206da0edca4edef23d2a3997a3ddbee462aa"
 dependencies = [
  "jiff-core",
  "jiff-static",
+ "jiff-tzdb",
  "log",
  "portable-atomic",
  "portable-atomic-util",
@@ -778,6 +783,12 @@ dependencies = [
  "quote",
  "syn 2.0.119",
 ]
+
+[[package]]
+name = "jiff-tzdb"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa8377070c6bae868759445e5a77f66d84f0b72f3a054bfb00e6d038b8282da7"
 
 [[package]]
 name = "js-sys"

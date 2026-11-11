@@ -1,15 +1,20 @@
 //! The contract between the server and its features.
 //!
 //! A feature implements [`Feature`] and is listed once in the server's registry. The server
-//! builds its router, navigation, home page and command palette from that list alone.
+//! builds its router, navigation and home page from that list alone.
+
+mod visit;
 
 use std::fmt;
 use std::future::Future;
 use std::pin::Pin;
 use std::str::FromStr;
+use std::time::Instant;
 
 use axum::Router;
 use maud::Markup;
+
+pub use crate::visit::{Intensity, Local, Prefs, Theme, Visit};
 
 /// Who is asking. A listener serves one kind of viewer, set when the server starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,42 +68,7 @@ impl Access {
     }
 }
 
-/// How much room a tile takes on the home page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TileSize {
-    /// One column.
-    Narrow,
-    /// Two columns where there is room.
-    Wide,
-}
-
-/// A box on the home page that a feature fills.
-#[derive(Debug, Clone)]
-pub struct Tile {
-    /// Unique across the site, and the tile's element id on the home page.
-    pub id: &'static str,
-    /// The tile's heading.
-    pub title: &'static str,
-    /// How much room it takes.
-    pub size: TileSize,
-    /// What it shows.
-    pub body: Markup,
-    /// Where its heading leads, if anywhere.
-    pub link: Option<&'static str>,
-}
-
-/// An entry in the command palette. Every command is also a plain link on each page.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Command {
-    /// What the palette lists.
-    pub label: &'static str,
-    /// Keys that run it, such as `g w`, typed one after the other.
-    pub keys: Option<&'static str>,
-    /// Where it leads.
-    pub href: &'static str,
-}
-
-/// A link in the site's navigation.
+/// A link in the site's navigation. Its place in the list is its key: the first is `1`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NavEntry {
     /// The link's text.
@@ -107,8 +77,29 @@ pub struct NavEntry {
     pub href: &'static str,
 }
 
-/// The tiles a feature offers, once they are ready.
-pub type Tiles<'a> = Pin<Box<dyn Future<Output = Vec<Tile>> + Send + 'a>>;
+/// What a feature is given to say its part of the home page.
+#[derive(Debug, Clone)]
+pub struct HomeContext {
+    pub visit: Visit,
+    /// When every tile must be ready. A tile that is not ready by then is left out.
+    pub deadline: Instant,
+}
+
+/// A feature's part of the home page.
+#[derive(Debug, Default)]
+pub struct HomeOffer {
+    /// Clauses of the opening sentence, each a sentence of its own.
+    pub said: Vec<Markup>,
+    /// A drawing beside the sentence.
+    pub figure: Option<Markup>,
+    /// Tiles below, in order.
+    pub tiles: Vec<Markup>,
+    /// Whether the feature is out of reach, which changes the page's look.
+    pub away: bool,
+}
+
+/// A feature's part of the home page, once it is ready.
+pub type HomeFuture<'a> = Pin<Box<dyn Future<Output = HomeOffer> + Send + 'a>>;
 
 /// A part of the site. Everything but [`Feature::id`], [`Feature::name`] and
 /// [`Feature::routes`] has a default, and the default access is [`Access::Private`].
@@ -119,27 +110,32 @@ pub trait Feature: Send + Sync {
     /// The name a person reads.
     fn name(&self) -> &'static str;
 
-    /// Who may see the feature: its routes, link, tiles and commands.
+    /// Who may see the feature: its routes, links and part of the home page.
     fn access(&self) -> Access {
         Access::Private
     }
 
-    /// Where the feature's link in the site navigation leads, if it has one.
-    fn nav(&self) -> Option<&'static str> {
-        None
+    /// The feature's links in the site navigation, in order.
+    fn nav(&self) -> &'static [NavEntry] {
+        &[]
     }
 
     /// Every route the feature answers. The server guards them all with [`Feature::access`].
     fn routes(&self) -> Router;
 
-    /// The tiles the feature puts on the home page.
-    fn tiles(&self) -> Tiles<'_> {
-        Box::pin(async { Vec::new() })
+    /// Where a search form sends its words, when the feature searches.
+    fn search(&self) -> Option<&'static str> {
+        None
     }
 
-    /// The feature's entries in the command palette.
-    fn commands(&self) -> &'static [Command] {
-        &[]
+    /// The feature's part of the home page.
+    fn home<'a>(&'a self, _context: &'a HomeContext) -> HomeFuture<'a> {
+        Box::pin(async { HomeOffer::default() })
+    }
+
+    /// A line for every page's footer, from what the feature already knows.
+    fn footnote(&self, _local: &Local) -> Option<Markup> {
+        None
     }
 }
 

@@ -1,0 +1,10 @@
+/* What the server adds to the prototype's rules, which atrium.css keeps as they were. */
+
+/* The letter-key switch sits beside the night theme and looks like it. Pressed, the keys
+   work; released, the letter is struck through and only keys with Ctrl or Cmd work. */
+.keys-btn { width: 28px; height: 28px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; background: none; color: var(--ink-2); cursor: pointer; transition: scale var(--t-press) var(--spring), border-color var(--t-quick); }
+.keys-btn:is(:hover, [data-force~="hover"]) { border-color: var(--rule-2); color: var(--ink); }
+.keys-btn:is(:active, [data-force~="active"]) { scale: .86; transition-duration: 60ms; }
+.keys-btn[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
+.keys-ico { font: 500 var(--fs-mono-l)/1 var(--mono); }
+.keys-btn[aria-pressed="false"] .keys-ico { text-decoration: line-through; }

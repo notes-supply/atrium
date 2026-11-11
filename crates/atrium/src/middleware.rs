@@ -156,23 +156,34 @@ pub async fn request_log(request: Request, next: Next) -> Response {
 mod tests {
     use super::*;
 
-    use atrium_ui::{Chrome, Module};
+    use atrium_core::{Local, Prefs, Visit};
+    use atrium_ui::{Chrome, Footnote, Module};
     use axum::routing::get;
+    use jiff::Timestamp;
+    use jiff::tz::TimeZone;
     use tower::ServiceExt;
 
     fn site(access: Access, viewer: Viewer) -> Router {
         let chrome = Arc::new(Chrome {
             nav: Vec::new(),
-            commands: Vec::new(),
+            search: None,
             stylesheet: String::new(),
+            fonts: Vec::new(),
             loader: String::new(),
             palette: Module {
                 glue: String::new(),
                 wasm: String::new(),
             },
+            footnote: Footnote(Arc::new(|_| None)),
         });
+        let visit = Visit {
+            local: Local::new(Timestamp::UNIX_EPOCH, TimeZone::UTC),
+            last: None,
+            prefs: Prefs::default(),
+        };
         guard(Router::new().route("/", get(|| async { "inside" })), access)
             .layer(Extension(chrome))
+            .layer(Extension(visit))
             .layer(Extension(viewer))
     }
 

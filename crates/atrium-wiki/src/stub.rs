@@ -164,6 +164,10 @@ fn routes() -> Router {
         .route("/v1/changes", get(changes))
         .route("/v1/search", get(search))
         .route("/v1/machines", get(machines))
+        .route(
+            "/v1/status",
+            get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
+        )
 }
 
 async fn record(

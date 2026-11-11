@@ -5,13 +5,14 @@ mod assets;
 mod features;
 mod log;
 mod middleware;
+mod visit;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use atrium_core::Viewer;
-use atrium_ui::{Chrome, Module, Shell};
+use atrium_ui::{Chrome, Footnote, Module, Shell};
 use axum::body::Bytes;
 use axum::response::Response;
 use axum::routing::get;
@@ -20,8 +21,11 @@ use serde_json::json;
 use tokio::net::TcpListener;
 use tokio::signal::unix::{SignalKind, signal};
 
+use jiff::tz::TimeZone;
+
 use crate::assets::Assets;
 use crate::features::Site;
+use crate::visit::{Clock, Visits};
 
 /// Everything the server is told at start, from flags or the environment.
 #[derive(Debug, Clone, clap::Parser)]
@@ -42,11 +46,31 @@ pub struct Config {
     )]
     pub allowed_hosts: Vec<String>,
     /// Mneme's base URL, such as `http://mneme:8080`.
-    #[arg(long, env = "ATRIUM_MNEME_URL")]
-    pub mneme_url: String,
+    #[arg(long, env = "ATRIUM_MNEME_URL", required_unless_present = "demo")]
+    pub mneme_url: Option<String>,
     /// How long one call to Mneme may take, in milliseconds.
     #[arg(long, env = "ATRIUM_MNEME_TIMEOUT_MS", default_value_t = 3000)]
     pub mneme_timeout_ms: u64,
+    /// The reader's time zone, for every time a page shows and the light of the hour.
+    #[arg(long, env = "ATRIUM_TIME_ZONE", default_value = "Europe/Stockholm", value_parser = zone)]
+    pub time_zone: TimeZone,
+    /// Serve the design's invented wiki instead of a Mneme, with the clock held at its time.
+    /// `away` shows the wiki out of reach.
+    #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "wiki")]
+    pub demo: Option<Demo>,
+}
+
+/// What the demo shows.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+pub enum Demo {
+    /// The design's invented wiki.
+    Wiki,
+    /// The same, with the wiki out of reach.
+    Away,
+}
+
+fn zone(name: &str) -> Result<TimeZone, String> {
+    TimeZone::get(name).map_err(|error| format!("{name}: {error}"))
 }
 
 /// Serves until SIGTERM or Ctrl-C, then finishes the requests in flight.
@@ -56,7 +80,7 @@ pub struct Config {
 /// Fails when the address cannot be bound or the server stops on an I/O error.
 pub async fn run(config: Config) -> Result<()> {
     let mut terminate = signal(SignalKind::terminate()).context("watching for SIGTERM")?;
-    let router = app(&config)?;
+    let router = app(&config).await?;
     let listener = TcpListener::bind(config.addr)
         .await
         .with_context(|| format!("binding {}", config.addr))?;
@@ -81,9 +105,9 @@ pub async fn run(config: Config) -> Result<()> {
 /// # Errors
 ///
 /// Fails when a feature cannot be built from the configuration.
-pub fn app(config: &Config) -> Result<Router> {
+pub async fn app(config: &Config) -> Result<Router> {
     let mut assets = Assets::default();
-    let (stylesheet, _fonts) = assets.add_styles();
+    let (stylesheet, fonts) = assets.add_styles();
     let loader = assets.add("loader", "js", Bytes::from_static(assets::LOADER));
     let palette = Module {
         glue: assets.add("palette", "js", Bytes::from_static(assets::PALETTE_GLUE)),
@@ -93,14 +117,31 @@ pub fn app(config: &Config) -> Result<Router> {
             Bytes::from_static(assets::PALETTE_WASM),
         ),
     };
-    let site = Arc::new(Site::new(features::registry(config)?, config.viewer));
+    let (mneme_url, clock) = match config.demo {
+        Some(demo) => (
+            atrium_wiki::demo::serve(demo == Demo::Away).await?,
+            demo_clock(),
+        ),
+        None => (config.mneme_url.clone().unwrap_or_default(), Clock::System),
+    };
+    let site = Arc::new(Site::new(
+        features::registry(config, &mneme_url)?,
+        config.viewer,
+    ));
+    let footnotes = Arc::clone(&site);
     let chrome = Arc::new(Chrome {
         nav: site.nav(),
-        commands: site.commands(),
+        search: site.search(),
         stylesheet,
+        fonts,
         loader,
         palette,
+        footnote: Footnote(Arc::new(move |local| footnotes.footnote(local))),
     });
+    let visits = Visits {
+        clock,
+        zone: config.time_zone.clone(),
+    };
     let pages = site
         .all()
         .iter()
@@ -113,6 +154,7 @@ pub fn app(config: &Config) -> Result<Router> {
         )
         .fallback(not_found)
         .layer(axum::middleware::from_fn(middleware::etag))
+        .layer(axum::middleware::from_fn_with_state(visits, visit::visit))
         .layer(Extension(site))
         .layer(Extension(chrome))
         .layer(Extension(config.viewer))
@@ -125,6 +167,14 @@ pub fn app(config: &Config) -> Result<Router> {
         .merge(pages)
         .layer(axum::middleware::from_fn(middleware::headers))
         .layer(axum::middleware::from_fn(middleware::request_log)))
+}
+
+/// The demo's now and the visit before it, from the design's invented content.
+fn demo_clock() -> Clock {
+    Clock::Fixed {
+        now: atrium_wiki::demo::NOW,
+        last: atrium_wiki::demo::LAST_VISIT,
+    }
 }
 
 async fn not_found(shell: Shell) -> Response {

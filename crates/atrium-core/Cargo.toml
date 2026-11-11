@@ -11,3 +11,4 @@ workspace = true
 [dependencies]
 axum.workspace = true
 maud.workspace = true
+jiff.workspace = true

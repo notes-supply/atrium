@@ -133,7 +133,7 @@ async fn an_unknown_host_is_refused_except_for_health_checks() {
 }
 
 #[tokio::test]
-async fn the_palette_loads_through_one_loader_of_at_most_a_kilobyte() {
+async fn the_modules_load_through_one_loader_of_at_most_a_kilobyte() {
     let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await.body;
     let loader = &attrs(&home, "script", "src")[0];
@@ -148,9 +148,8 @@ async fn the_palette_loads_through_one_loader_of_at_most_a_kilobyte() {
         reply.header("cache-control"),
         Some("public, max-age=31536000, immutable")
     );
-    assert_eq!(attrs(&home, "[data-module]", "data-module"), ["palette"]);
     let glue = atrium
-        .get(&attrs(&home, "[data-module]", "data-glue")[0])
+        .get(&attrs(&home, ".jump[data-module=palette]", "data-glue")[0])
         .await;
     assert_eq!(glue.status, 200);
     assert!(
@@ -158,7 +157,7 @@ async fn the_palette_loads_through_one_loader_of_at_most_a_kilobyte() {
         "the default export the loader calls"
     );
     let wasm = atrium
-        .get(&attrs(&home, "[data-module]", "data-wasm")[0])
+        .get(&attrs(&home, ".jump[data-module=palette]", "data-wasm")[0])
         .await;
     assert_eq!(wasm.status, 200);
     assert_eq!(wasm.header("content-type"), Some("application/wasm"));
@@ -166,35 +165,29 @@ async fn the_palette_loads_through_one_loader_of_at_most_a_kilobyte() {
 }
 
 #[tokio::test]
-async fn every_command_is_also_a_plain_link() {
+async fn every_section_is_a_plain_link_with_its_key() {
     let atrium = Atrium::tailnet().await;
     let home = atrium.get("/").await.body;
-    let links = attrs(&home, "[data-module=palette] a", "href");
-    for command in [
-        "/",
-        "/wiki",
-        "/wiki/changes",
-        "/wiki/search",
-        "/wiki/machines",
-    ] {
-        assert!(
-            links.contains(&command.to_owned()),
-            "{command} in {links:?}"
-        );
-    }
-    let keys = attrs(&home, "[data-module=palette] a", "data-keys");
     assert_eq!(
-        keys.len(),
-        links.len(),
-        "every command here has keys: {keys:?}"
+        attrs(&home, ".mast .index a", "href"),
+        [
+            "/",
+            "/wiki",
+            "/wiki/changes",
+            "/wiki/search",
+            "/wiki/machines"
+        ]
+    );
+    assert_eq!(
+        attrs(&home, ".mast .index a", "data-key"),
+        ["1", "2", "3", "4", "5"]
     );
 }
 
 #[tokio::test]
-async fn a_page_with_nothing_interactive_has_no_script() {
+async fn a_refusal_keeps_the_output_rules() {
     let atrium = Atrium::start(Stub::Fixtures, &["--viewer", "anonymous"]).await;
     let reply = atrium.get("/").await;
     assert_eq!(reply.status, 404);
-    assert!(!reply.body.contains("<script"), "{}", reply.body);
     check("/ to an anonymous viewer", &reply.body);
 }

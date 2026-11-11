@@ -4,7 +4,9 @@
 
 use std::fmt;
 use std::str::FromStr;
-use std::time::Duration;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use reqwest::{Client, StatusCode};
 use serde::Deserialize;
@@ -254,6 +256,19 @@ pub struct Run {
     pub hit: bool,
 }
 
+/// The record as a whole.
+#[derive(Debug, Clone, Deserialize)]
+pub struct Status {
+    /// The head commit, `None` before the first.
+    #[serde(default)]
+    pub head: Option<CommitId>,
+    /// The head commit's time.
+    #[serde(default)]
+    pub head_time: Option<i64>,
+    pub pages: u64,
+    pub commits: u64,
+}
+
 /// Every machine that may push.
 #[derive(Debug, Deserialize)]
 pub struct Machines {
@@ -403,11 +418,22 @@ impl Listing {
     }
 }
 
-/// Mneme's reading API at one base URL. Every call gives up after the timeout.
+/// Mneme's reading API at one base URL. Every call gives up after the timeout. Clones share
+/// what the client has heard: the newest status and when Mneme last answered.
 #[derive(Debug, Clone)]
 pub struct Mneme {
     http: Client,
     base: String,
+    status: Arc<Mutex<Option<Status>>>,
+    heard: Arc<AtomicI64>,
+}
+
+fn now() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |since| {
+            i64::try_from(since.as_secs()).unwrap_or(i64::MAX)
+        })
 }
 
 impl Mneme {
@@ -424,7 +450,29 @@ impl Mneme {
         Ok(Self {
             http,
             base: base.trim_end_matches('/').to_owned(),
+            status: Arc::default(),
+            heard: Arc::default(),
         })
+    }
+
+    /// The newest status any call has read.
+    #[must_use]
+    pub fn known_status(&self) -> Option<Status> {
+        self.status
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// When Mneme last answered, in seconds since the Unix epoch.
+    #[must_use]
+    pub fn heard(&self) -> Option<i64> {
+        Some(self.heard.load(Ordering::Relaxed)).filter(|at| *at > 0)
+    }
+
+    /// Says Mneme was last heard at `at`, as the demo does for its invented past.
+    pub fn heard_at(&self, at: i64) {
+        self.heard.store(at, Ordering::Relaxed);
     }
 
     async fn get<T: DeserializeOwned>(
@@ -442,6 +490,9 @@ impl Mneme {
             .map_err(away)?;
         let status = response.status();
         let body = response.bytes().await.map_err(away)?;
+        if !status.is_server_error() {
+            self.heard.store(now(), Ordering::Relaxed);
+        }
         match status {
             StatusCode::OK => serde_json::from_slice(&body)
                 .map_err(|error| MnemeError::Broken(format!("{path}: {error}"))),
@@ -548,6 +599,17 @@ impl Mneme {
             query.push(("changed_within_days", days.to_string()));
         }
         self.get("search", &query).await
+    }
+
+    /// The record as a whole, which the client also keeps as the newest it knows.
+    ///
+    /// # Errors
+    ///
+    /// Any [`MnemeError`].
+    pub async fn status(&self) -> Result<Status, MnemeError> {
+        let status: Status = self.get("status", &[]).await?;
+        *self.status.lock().unwrap_or_else(PoisonError::into_inner) = Some(status.clone());
+        Ok(status)
     }
 
     /// Every machine and what its autosave service last reported.

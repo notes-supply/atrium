@@ -1,20 +1,24 @@
 //! The wiki feature: a reader for the wiki that Mneme holds.
 
+pub mod demo;
 mod markdown;
 pub mod mneme;
 mod routes;
-#[cfg(any(test, feature = "stub"))]
 pub mod stub;
 
 use std::time::Duration;
 
-use atrium_core::{Command, Feature, Tile, TileSize, Tiles};
+use atrium_core::{Feature, HomeContext, HomeFuture, HomeOffer, Local, NavEntry};
 use axum::Router;
+use maud::{Markup, html};
 
 use crate::mneme::Mneme;
 
 /// Changes the home page's tile lists.
-const TILE_CHANGES: u64 = 5;
+const TILE_CHANGES: u64 = 8;
+
+/// The place that holds the record, as the map draws it.
+pub const RECORD: &str = "apollo";
 
 /// The wiki, read from the Mneme at one URL.
 pub struct Wiki {
@@ -32,6 +36,12 @@ impl Wiki {
             mneme: Mneme::new(url, timeout)?,
         })
     }
+
+    /// The client, which the demo tells what it heard before it started.
+    #[must_use]
+    pub const fn mneme(&self) -> &Mneme {
+        &self.mneme
+    }
 }
 
 impl Feature for Wiki {
@@ -43,49 +53,51 @@ impl Feature for Wiki {
         "Wiki"
     }
 
-    fn nav(&self) -> Option<&'static str> {
-        Some("/wiki")
+    fn nav(&self) -> &'static [NavEntry] {
+        &[
+            NavEntry {
+                label: "Wiki",
+                href: "/wiki",
+            },
+            NavEntry {
+                label: "Changes",
+                href: "/wiki/changes",
+            },
+            NavEntry {
+                label: "Search",
+                href: "/wiki/search",
+            },
+            NavEntry {
+                label: "Machines",
+                href: "/wiki/machines",
+            },
+        ]
     }
 
     fn routes(&self) -> Router {
         routes::router(self.mneme.clone())
     }
 
-    fn tiles(&self) -> Tiles<'_> {
+    fn search(&self) -> Option<&'static str> {
+        Some("/wiki/search")
+    }
+
+    fn home<'a>(&'a self, _context: &'a HomeContext) -> HomeFuture<'a> {
         Box::pin(async {
-            let body = routes::latest(&self.mneme, TILE_CHANGES).await;
-            vec![Tile {
-                id: "wiki-changes",
-                title: "Recent changes",
-                size: TileSize::Wide,
-                body,
-                link: Some("/wiki/changes"),
-            }]
+            HomeOffer {
+                tiles: vec![routes::latest(&self.mneme, TILE_CHANGES).await],
+                ..HomeOffer::default()
+            }
         })
     }
 
-    fn commands(&self) -> &'static [Command] {
-        &[
-            Command {
-                label: "Wiki pages",
-                keys: Some("g w"),
-                href: "/wiki",
-            },
-            Command {
-                label: "Recent changes",
-                keys: Some("g c"),
-                href: "/wiki/changes",
-            },
-            Command {
-                label: "Search the wiki",
-                keys: Some("g s"),
-                href: "/wiki/search",
-            },
-            Command {
-                label: "Machines",
-                keys: Some("g m"),
-                href: "/wiki/machines",
-            },
-        ]
+    fn footnote(&self, local: &Local) -> Option<Markup> {
+        let status = self.mneme.known_status()?;
+        Some(html! {
+            "The record on " (RECORD) ": " (atrium_ui::words::number(status.pages)) " pages, "
+            (atrium_ui::words::number(status.commits)) " commits"
+            @if let Some(newest) = status.head_time { ", the newest " (local.when_long(newest)) }
+            "."
+        })
     }
 }

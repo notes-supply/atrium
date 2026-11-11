@@ -225,7 +225,7 @@ async fn setup(binary: &str) -> (Atrium, Setup) {
         .await
         .unwrap();
     assert_eq!(report.status(), 204);
-    let atrium = Atrium::serve(Running::elsewhere(&mneme.base), &["--viewer", "tailnet"]);
+    let atrium = Atrium::serve(Running::elsewhere(&mneme.base), &["--viewer", "tailnet"]).await;
     let setup = Setup {
         _dirs: [home, server, clone],
         _mneme: mneme,

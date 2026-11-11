@@ -8,15 +8,12 @@ publish.workspace = true
 [lints]
 workspace = true
 
-[features]
-# A stand-in for Mneme that serves its example responses, for tests.
-stub = []
-
 [dependencies]
 atrium-core.workspace = true
 atrium-ui.workspace = true
 axum.workspace = true
 comrak.workspace = true
+jiff.workspace = true
 maud.workspace = true
 percent-encoding.workspace = true
 reqwest = { workspace = true, features = ["query"] }

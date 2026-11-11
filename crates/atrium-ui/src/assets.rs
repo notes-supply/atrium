@@ -49,6 +49,8 @@ pub const DITHER: [File; 9] = files!(
 const TOKENS: &str = include_str!("../assets/tokens.css");
 /// The rules, which import the tokens and the drawn sizes.
 const RULES: &str = include_str!("../assets/atrium.css");
+/// What the server adds to the rules.
+const PORT: &str = include_str!("../assets/port.css");
 
 /// Sizes that follow from the drawings and the data: the map's proportions, and a class per
 /// percent for the reading progress bar, since a page may not carry `style` attributes.
@@ -73,7 +75,7 @@ pub fn stylesheet(url_of: impl Fn(&File) -> String) -> String {
         .filter(|line| !line.starts_with("@import "))
         .flat_map(|line| [line, "\n"])
         .collect();
-    let mut css = format!("{TOKENS}\n{}\n{rules}", drawn());
+    let mut css = format!("{TOKENS}\n{}\n{rules}\n{PORT}", drawn());
     for (folder, files) in [("../fonts/", &FONTS[..]), ("dither/", &DITHER[..])] {
         for file in files {
             let written = format!("url(\"{folder}{}.{}\")", file.stem, file.extension);

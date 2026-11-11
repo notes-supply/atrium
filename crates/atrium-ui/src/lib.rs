@@ -1,37 +1,58 @@
-//! The page shell around every feature's pages, the small components features share, and the
-//! stylesheet. Plain semantic HTML, so the chosen design can replace it.
+//! The page shell around every feature's pages, the components the pages share, the drawings
+//! and the stylesheet. Each piece writes the markup of the chosen design's prototype, so the
+//! stylesheet and the browser modules find what they expect.
 
+pub mod assets;
+pub mod components;
+pub mod draw;
+pub mod words;
+
+use std::fmt;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
-use atrium_core::{Command, NavEntry};
+use atrium_core::{Intensity, Local, NavEntry, Prefs, Visit};
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
 use axum::response::{IntoResponse, Response};
-use jiff::Timestamp;
-use maud::{DOCTYPE, Markup, Render, html};
+use maud::{DOCTYPE, Markup, PreEscaped, html};
 
-pub mod assets;
-pub mod draw;
+use crate::components::cmd_line;
+use crate::draw::glyph;
 
-/// The id of the element the skip link leads to. Markdown headings get ids too, so it is
-/// unlikely to be a heading's.
-const MAIN: &str = "main-content";
+/// The id of the element the skip link leads to.
+pub const MAIN: &str = "main";
+
+/// Writes a footer's line for the reader's clock.
+pub type FootnoteFn = dyn Fn(&Local) -> Option<Markup> + Send + Sync;
+
+/// Every page footer's line, from what the features already know.
+#[derive(Clone)]
+pub struct Footnote(pub Arc<FootnoteFn>);
+
+impl fmt::Debug for Footnote {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Footnote")
+    }
+}
 
 /// What every page around a feature's content shows, for the viewer a listener serves.
 #[derive(Debug, Clone)]
 pub struct Chrome {
-    /// The site navigation, in registry order.
+    /// The site navigation, in registry order. The first entry is key `1`.
     pub nav: Vec<NavEntry>,
-    /// Every command the palette offers, which each page also lists as links.
-    pub commands: Vec<Command>,
+    /// Where a search form sends its words.
+    pub search: Option<&'static str>,
     /// The stylesheet's URL.
     pub stylesheet: String,
-    /// The module loader's URL: the page's one script, when it has a module.
+    /// The fonts the first paint needs.
+    pub fonts: Vec<String>,
+    /// The module loader's URL: the page's one script.
     pub loader: String,
     /// The command palette's module.
     pub palette: Module,
+    pub footnote: Footnote,
 }
 
 /// A Wasm module's files, as the loader reads them from the element that names the module.
@@ -43,12 +64,54 @@ pub struct Module {
     pub wasm: String,
 }
 
-/// The shell for one request: the chrome and the path, so the current navigation entry is
-/// marked. A handler takes it as an argument; the server puts the chrome in each request.
+/// Which navigation entry a page belongs to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Current {
+    /// The entry whose address is the longest start of the page's path.
+    Path,
+    /// The entry at this address.
+    Href(&'static str),
+    /// None, as on a page that is not there.
+    Nothing,
+}
+
+/// One page: what goes in its head, between the masthead and the footer, and in the footer.
+#[derive(Debug)]
+pub struct Page {
+    /// The whole `<title>`.
+    pub title: String,
+    pub description: &'static str,
+    pub current: Current,
+    /// Everything between the masthead and the footer, its `<main>` included.
+    pub body: Markup,
+    /// The footer's line, when the page says something of its own there.
+    pub foot: Option<Markup>,
+    /// Whether the page marks what is new since the last visit.
+    pub since: bool,
+}
+
+impl Page {
+    /// A page that belongs to the entry its path names, with the usual footer.
+    #[must_use]
+    pub fn new(title: impl Into<String>, description: &'static str, body: Markup) -> Self {
+        Self {
+            title: title.into(),
+            description,
+            current: Current::Path,
+            body,
+            foot: None,
+            since: false,
+        }
+    }
+}
+
+/// The shell for one request: the chrome, the path, and the visit. A handler takes it as an
+/// argument; the server puts the chrome and the visit in each request.
 #[derive(Debug, Clone)]
 pub struct Shell {
     chrome: Arc<Chrome>,
     path: String,
+    visit: Visit,
 }
 
 impl<S: Send + Sync> FromRequestParts<S> for Shell {
@@ -58,10 +121,11 @@ impl<S: Send + Sync> FromRequestParts<S> for Shell {
         parts: &mut Parts,
         _state: &S,
     ) -> impl Future<Output = Result<Self, Self::Rejection>> + Send {
-        let shell = parts
-            .extensions
-            .get::<Arc<Chrome>>()
-            .map(|chrome| Self::new(Arc::clone(chrome), parts.uri.path()))
+        let chrome = parts.extensions.get::<Arc<Chrome>>();
+        let visit = parts.extensions.get::<Visit>();
+        let shell = chrome
+            .zip(visit)
+            .map(|(chrome, visit)| Self::new(Arc::clone(chrome), parts.uri.path(), visit.clone()))
             .ok_or(StatusCode::INTERNAL_SERVER_ERROR);
         ready(shell)
     }
@@ -70,100 +134,200 @@ impl<S: Send + Sync> FromRequestParts<S> for Shell {
 impl Shell {
     /// A shell for `path` without a request, for tests and for middleware.
     #[must_use]
-    pub fn new(chrome: Arc<Chrome>, path: &str) -> Self {
+    pub fn new(chrome: Arc<Chrome>, path: &str, visit: Visit) -> Self {
         Self {
             chrome,
             path: path.to_owned(),
+            visit,
         }
     }
 
-    /// A 200 page titled `title` around `main`.
+    /// The reader's clock.
     #[must_use]
-    pub fn page(&self, title: &str, main: impl Render) -> Response {
-        self.respond(StatusCode::OK, title, main)
+    pub const fn local(&self) -> &Local {
+        &self.visit.local
     }
 
-    /// A page with `status`, titled `title`, around `main`.
+    /// The reader's visit.
     #[must_use]
-    pub fn respond(&self, status: StatusCode, title: &str, main: impl Render) -> Response {
-        (status, self.document(title, &main)).into_response()
+    pub const fn visit(&self) -> &Visit {
+        &self.visit
     }
 
-    /// The page for an address with nothing at it, or nothing this viewer may see.
+    /// The address asked for.
     #[must_use]
-    pub fn not_found(&self) -> Response {
-        self.respond(
-            StatusCode::NOT_FOUND,
-            "Not found",
-            html! {
-                h1 { "Not found" }
-                p { "There is nothing at this address." }
-            },
-        )
+    pub fn path(&self) -> &str {
+        &self.path
     }
 
-    fn current(&self, href: &str) -> bool {
-        match href {
-            "/" => self.path == "/",
-            _ => self
-                .path
-                .strip_prefix(href)
-                .is_some_and(|rest| rest.is_empty() || rest.starts_with('/')),
-        }
+    /// Where search forms send their words.
+    #[must_use]
+    pub fn search(&self) -> &'static str {
+        self.chrome.search.unwrap_or("/")
     }
 
-    fn document(&self, title: &str, main: &impl Render) -> Markup {
-        let chrome = &self.chrome;
-        // The palette is the only module so far; a page loads the loader only with one.
-        let palette = !chrome.commands.is_empty();
-        html! {
-            (DOCTYPE)
-            html lang="en" {
-                head {
-                    meta charset="utf-8";
-                    meta name="viewport" content="width=device-width, initial-scale=1";
-                    title { (title) " · Atrium" }
-                    link rel="stylesheet" href=(chrome.stylesheet);
-                    @if palette {
-                        script type="module" src=(chrome.loader) {}
+    /// A 200 page.
+    #[must_use]
+    pub fn page(&self, page: Page) -> Response {
+        self.respond(StatusCode::OK, page)
+    }
+
+    /// A page with `status`.
+    #[must_use]
+    pub fn respond(&self, status: StatusCode, page: Page) -> Response {
+        (status, self.document(page)).into_response()
+    }
+
+    /// The page for an address with nothing at it, or nothing this viewer may see. `gone`
+    /// says what the record remembers of a page that was there, and `ways` are links on.
+    #[must_use]
+    pub fn lost(&self, gone: Option<Markup>, ways: &[(String, String)]) -> Response {
+        let word = self
+            .path
+            .rsplit('/')
+            .find(|part| !part.is_empty())
+            .map(|part| part.trim_end_matches(".md").replace(['-', '_'], " "));
+        let body = html! {
+            main #(MAIN) .not-found {
+                section.lost aria-labelledby="lost-h" {
+                    p.code-404 { "404, " (self.path) }
+                    h1 #lost-h { "Nothing at this address" }
+                    @if let Some(gone) = gone {
+                        p { "There is no page here now. The record remembers one that was:" }
+                        div.gone.surface data-surface { (gone) }
+                    } @else {
+                        p { "There is no page here." }
+                    }
+                    @if let Some(search) = self.chrome.search {
+                        (cmd_line("lost", search))
                     }
                 }
-                body {
-                    a.skip href={ "#" (MAIN) } { "Skip to content" }
-                    header {
-                        nav aria-label="Site" {
-                            ul {
-                                @for entry in &chrome.nav {
-                                    li {
-                                        a href=(entry.href)
-                                            aria-current=[self.current(entry.href).then_some("page")]
-                                        { (entry.label) }
-                                    }
-                                }
-                            }
-                        }
+                aside.lost-side.surface data-surface aria-labelledby="ways-h" {
+                    h2 #ways-h .rail-h { "Ways on" }
+                    a.more href="/" { "Home" }
+                    @if let (Some(search), Some(word)) = (self.chrome.search, &word) {
+                        a.more href=(format!("{search}?q={}", words::query(word))) { "Search for “" (word) "”" }
                     }
-                    main id=(MAIN) { (main) }
-                    @if palette {
-                        footer {
-                            nav aria-labelledby="commands" data-module="palette"
-                                data-glue=(chrome.palette.glue) data-wasm=(chrome.palette.wasm)
-                            {
-                                h2 #commands { "Commands" }
-                                p { "Ctrl+K or ⌘K opens these anywhere." }
-                                ul {
-                                    @for command in &chrome.commands {
-                                        li {
-                                            a href=(command.href) data-keys=[command.keys] {
-                                                (command.label)
-                                            }
-                                            @if let Some(keys) = command.keys {
-                                                " " kbd { (keys) }
-                                            }
+                    @for (label, href) in ways {
+                        a.more href=(href) { (label) }
+                    }
+                }
+            }
+        };
+        let mut page = Page::new("Not found, Atrium", "Nothing at this address.", body);
+        page.current = Current::Nothing;
+        self.respond(StatusCode::NOT_FOUND, page)
+    }
+
+    /// The plain page for an address with nothing at it.
+    #[must_use]
+    pub fn not_found(&self) -> Response {
+        self.lost(None, &[])
+    }
+
+    fn current(&self, current: Current) -> Option<&'static str> {
+        match current {
+            Current::Nothing => None,
+            Current::Href(href) => Some(href),
+            Current::Path => self
+                .chrome
+                .nav
+                .iter()
+                .map(|entry| entry.href)
+                .filter(|href| match *href {
+                    "/" => self.path == "/",
+                    href => self
+                        .path
+                        .strip_prefix(href)
+                        .is_some_and(|rest| rest.is_empty() || rest.starts_with('/')),
+                })
+                .max_by_key(|href| href.len()),
+        }
+    }
+
+    fn document(&self, page: Page) -> Markup {
+        let chrome = &self.chrome;
+        let local = &self.visit.local;
+        let prefs = &self.visit.prefs;
+        let current = self.current(page.current);
+        let body = page.body.into_string();
+        // The drawings of places fill their faces from patterns every page defines once.
+        let places = body.contains(r#"<g class="m""#);
+        let modules = if page.since {
+            "keys light carry since"
+        } else {
+            "keys light carry"
+        };
+        html! {
+            (DOCTYPE)
+            html lang="en" data-hour=(local.hour()) data-intensity=(prefs.intensity.name())
+                data-theme=[prefs.theme.map(atrium_core::Theme::name)]
+                data-keys=[(!prefs.letter_keys).then_some("off")]
+            {
+                head {
+                    meta charset="utf-8";
+                    meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover";
+                    meta name="color-scheme" content="light dark";
+                    title { (page.title) }
+                    meta name="description" content=(page.description);
+                    @for font in &chrome.fonts {
+                        link rel="preload" href=(font) as="font" type="font/woff2" crossorigin;
+                    }
+                    link rel="stylesheet" href=(chrome.stylesheet);
+                    script type="module" src=(chrome.loader) {}
+                }
+                body data-module=(modules) {
+                    a.skip href={ "#" (MAIN) } { "Skip to content" }
+                    @if places { (draw::place_defs()) }
+                    canvas.field aria-hidden="true" data-module="field" {}
+                    header.mast {
+                        a.wordmark href="/" { (glyph("glyph", "")) span { "Atrium" } }
+                        nav.index aria-label="Sections" {
+                            ol {
+                                @for (i, entry) in chrome.nav.iter().enumerate() {
+                                    li {
+                                        a href=(entry.href) data-key=(i + 1)
+                                            aria-current=[(current == Some(entry.href)).then_some("page")]
+                                        {
+                                            span.br aria-hidden="true" { "[" }
+                                            span.k { (i + 1) }
+                                            span.br aria-hidden="true" { "]" }
+                                            span.lb { (entry.label) }
                                         }
                                     }
                                 }
                             }
+                        }
+                        div.mast-tools {
+                            time.clock datetime=(local.iso(local.seconds())) data-module="clock" {
+                                (local.hm(local.seconds()))
+                            }
+                            (controls("mast", *prefs))
+                            a.jump.btn href=(self.search()) data-module="palette"
+                                data-glue=(chrome.palette.glue) data-wasm=(chrome.palette.wasm)
+                                aria-keyshortcuts="Control+K Meta+K"
+                            {
+                                span { "Jump" }
+                                kbd.kbd-ctrl { "Ctrl K" }
+                            }
+                        }
+                    }
+                    (PreEscaped(body))
+                    footer.foot {
+                        p.foot-note {
+                            @match page.foot.or_else(|| (chrome.footnote.0)(local)) {
+                                Some(line) => (line),
+                                None => "The wiki did not answer.",
+                            }
+                        }
+                        (controls("foot", *prefs))
+                        p.foot-keys {
+                            kbd { "1" } "–" kbd { (chrome.nav.len()) } " sections, "
+                            kbd { "j" } " " kbd { "k" } " rows, "
+                            kbd { "/" } " search, "
+                            kbd { "Ctrl K" } " jump, "
+                            kbd { "T" } " theme, "
+                            kbd { "F" } " field"
                         }
                     }
                 }
@@ -172,75 +336,123 @@ impl Shell {
     }
 }
 
-/// A time in seconds since the Unix epoch, as a `<time>` element in UTC.
-#[must_use]
-pub fn time(seconds: i64) -> Markup {
-    Timestamp::from_second(seconds).map_or_else(
-        |_| html! { (seconds) },
-        |at| html! { time datetime=(at) { (at.strftime("%Y-%m-%d %H:%M")) } },
-    )
-}
-
-/// The day of a time in seconds since the Unix epoch, in UTC, as `2026-09-01`.
-#[must_use]
-pub fn day(seconds: i64) -> String {
-    Timestamp::from_second(seconds).map_or_else(
-        |_| seconds.to_string(),
-        |at| at.strftime("%Y-%m-%d").to_string(),
-    )
+/// The field intensity, the night theme and the letter keys, as the masthead and the footer
+/// both offer them. Each button shows the reader's setting.
+fn controls(place: &str, prefs: Prefs) -> Markup {
+    let swatch = |level: Intensity, title: &str, label: &str| {
+        html! {
+            button.swatch type="button" data-intensity=(level.name())
+                aria-pressed=(prefs.intensity == level) title=(title)
+            {
+                (glyph(&format!("sw sw-{}", level.name()), ""))
+                span.vh { (label) }
+            }
+        }
+    };
+    let dark = prefs.theme == Some(atrium_core::Theme::Dark);
+    html! {
+        div class={ "prefs prefs-" (place) " js-only" } data-module="prefs" {
+            div.intensity role="group" aria-label="Field intensity" {
+                span.pref-label aria-hidden="true" { "Field" }
+                (swatch(Intensity::Calm, "Calm: the field holds still", "Calm"))
+                (swatch(Intensity::Normal, "Normal: the field breathes and follows the pointer", "Normal"))
+                (swatch(Intensity::Lively, "Lively: a trail, ripples on click, packets on the lines", "Lively"))
+            }
+            button.theme-btn type="button" aria-pressed=(dark) title="Night theme" {
+                span.theme-ico aria-hidden="true" {}
+                span.vh { "Night theme" }
+            }
+            button.keys-btn type="button" aria-pressed=(prefs.letter_keys)
+                title="Single-letter keys: on, keys such as j and 1 work without Ctrl"
+            {
+                span.keys-ico aria-hidden="true" { "j" }
+                span.vh { "Single-letter keys" }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use atrium_core::{Prefs, Theme};
+    use jiff::tz::TimeZone;
+
     use super::*;
 
-    fn shell(path: &str) -> Shell {
+    fn shell(path: &str, prefs: Prefs) -> Shell {
+        let entry = |label, href| NavEntry { label, href };
         Shell::new(
             Arc::new(Chrome {
                 nav: vec![
-                    NavEntry {
-                        label: "Home",
-                        href: "/",
-                    },
-                    NavEntry {
-                        label: "Wiki",
-                        href: "/wiki",
-                    },
+                    entry("Home", "/"),
+                    entry("Wiki", "/wiki"),
+                    entry("Changes", "/wiki/changes"),
                 ],
-                commands: Vec::new(),
+                search: Some("/wiki/search"),
                 stylesheet: "/assets/atrium.css".to_owned(),
+                fonts: Vec::new(),
                 loader: "/assets/loader.js".to_owned(),
                 palette: Module {
                     glue: "/assets/palette.js".to_owned(),
                     wasm: "/assets/palette_bg.wasm".to_owned(),
                 },
+                footnote: Footnote(Arc::new(|_| None)),
             }),
             path,
+            Visit {
+                local: Local::new(
+                    "2026-11-11T08:41:00Z".parse().unwrap(),
+                    TimeZone::get("Europe/Stockholm").unwrap(),
+                ),
+                last: None,
+                prefs,
+            },
         )
+    }
+
+    fn document(path: &str, prefs: Prefs) -> String {
+        shell(path, prefs)
+            .document(Page::new("t", "d", html! {}))
+            .into_string()
     }
 
     #[test]
     fn marks_the_entry_whose_section_holds_the_path() {
-        let page = shell("/wiki/page/0123456789abcdef")
-            .document("t", &html! {})
-            .into_string();
-        assert!(page.contains(r#"<a href="/wiki" aria-current="page">"#));
-        assert!(page.contains(r#"<a href="/">"#));
-    }
-
-    #[test]
-    fn home_is_current_only_at_the_root() {
-        let page = shell("/").document("t", &html! {}).into_string();
-        assert!(page.contains(r#"<a href="/" aria-current="page">"#));
-        assert!(!shell("/wikipedia").current("/wiki"));
-    }
-
-    #[test]
-    fn times_are_utc() {
+        let page = document("/wiki/page/0123456789abcdef", Prefs::default());
+        assert!(page.contains(r#"<a href="/wiki" data-key="2" aria-current="page">"#));
+        let changes = document("/wiki/changes", Prefs::default());
+        assert!(changes.contains(r#"<a href="/wiki/changes" data-key="3" aria-current="page">"#));
+        assert!(changes.contains(r#"<a href="/wiki" data-key="2">"#));
         assert_eq!(
-            time(1_788_220_800).into_string(),
-            r#"<time datetime="2026-09-01T00:00:00Z">2026-09-01 00:00</time>"#
+            shell("/wikipedia", Prefs::default()).current(Current::Path),
+            None
         );
-        assert_eq!(day(1_788_307_199), "2026-09-01");
+    }
+
+    #[test]
+    fn the_page_carries_the_hour_and_the_readers_settings() {
+        let page = document(
+            "/",
+            Prefs {
+                theme: Some(Theme::Dark),
+                intensity: Intensity::Calm,
+                letter_keys: false,
+            },
+        );
+        assert!(page.contains(r#"<html lang="en" data-hour="9" data-intensity="calm" data-theme="dark" data-keys="off">"#), "{page}");
+        assert!(
+            page.contains(
+                r#"class="swatch" type="button" data-intensity="calm" aria-pressed="true""#
+            )
+        );
+        assert!(page.contains(r#"class="keys-btn" type="button" aria-pressed="false""#));
+        let plain = document("/", Prefs::default());
+        assert!(plain.contains(r#"<html lang="en" data-hour="9" data-intensity="normal">"#));
+    }
+
+    #[test]
+    fn the_masthead_clock_reads_the_readers_time() {
+        let page = document("/", Prefs::default());
+        assert!(page.contains(r#"<time class="clock" datetime="2026-11-11T09:41:00+01:00" data-module="clock">09:41</time>"#), "{page}");
     }
 }

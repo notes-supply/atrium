@@ -3,7 +3,7 @@
 
 use std::str::FromStr;
 
-use atrium_ui::{Shell, day, time};
+use atrium_ui::{MAIN, Page, Shell};
 use axum::Router;
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Path, Query, State};
@@ -62,16 +62,27 @@ type Shown = Result<(String, Markup), Failure>;
 /// The one place a wiki page's outcome becomes a response.
 fn respond(shell: &Shell, shown: Shown) -> Response {
     let (status, title, why) = match shown {
-        Ok((title, main)) => return shell.page(&title, main),
+        Ok((title, main)) => {
+            return shell.page(Page::new(
+                format!("{title}, Atrium wiki"),
+                "The wiki.",
+                html! { main #(MAIN) { (main) } },
+            ));
+        }
         Err(Failure::Mneme(MnemeError::NotFound)) => return shell.not_found(),
         Err(Failure::Mneme(MnemeError::Away(_))) => {
             let mut response = shell.respond(
                 StatusCode::SERVICE_UNAVAILABLE,
-                "The wiki is away",
-                html! {
-                    h1 { "The wiki is briefly away" }
-                    p { "Mneme, which holds the wiki, did not answer in time. Try again in a minute; the rest of Atrium works." }
-                },
+                Page::new(
+                    "Atrium",
+                    "The wiki is briefly out of reach. The rest of Atrium works.",
+                    html! {
+                        main #(MAIN) {
+                            h1 { "The wiki is briefly away" }
+                            p { "Mneme, which holds the wiki, did not answer in time. Try again in a minute; the rest of Atrium works." }
+                        }
+                    },
+                ),
             );
             response
                 .headers_mut()
@@ -92,7 +103,14 @@ fn respond(shell: &Shell, shown: Shown) -> Response {
             format!("Mneme answered in a way this version of Atrium cannot read: {detail}"),
         ),
     };
-    shell.respond(status, title, html! { h1 { (title) } p { (why) } })
+    shell.respond(
+        status,
+        Page::new(
+            format!("{title}, Atrium wiki"),
+            "The wiki.",
+            html! { main #(MAIN) { h1 { (title) } p { (why) } } },
+        ),
+    )
 }
 
 /// A page id from an address. One that cannot be an id is a page that is not there.
@@ -472,10 +490,17 @@ async fn recent(mneme: &Mneme, query: Result<Query<Params>, QueryRejection>) -> 
 
 /// The `count` latest changes for the home page, or a line saying the wiki is away.
 pub async fn latest(mneme: &Mneme, count: u64) -> Markup {
-    if let Ok(found) = mneme.changes(0, count).await {
-        html! { ol { @for change in &found.events { (event(change, true)) } } }
+    let list = if let Ok(found) = mneme.changes(0, count).await {
+        html! { ol.change-list { @for change in &found.events { (event(change, true)) } } }
     } else {
         html! { p { "The wiki is briefly away." } }
+    };
+    html! {
+        article.tile.changes.surface data-surface aria-labelledby="changes-h" {
+            header.tile-head { h2 #changes-h { "Recent changes" } }
+            (list)
+            a.more href="/wiki/changes" { "All changes" }
+        }
     }
 }
 
@@ -646,4 +671,20 @@ async fn found_by_path(shell: &Shell, mneme: &Mneme, path: &str) -> Response {
             return shell.not_found();
         }
     }
+}
+
+/// A time in seconds since the Unix epoch, as a `<time>` element in UTC.
+fn time(seconds: i64) -> Markup {
+    jiff::Timestamp::from_second(seconds).map_or_else(
+        |_| html! { (seconds) },
+        |at| html! { time datetime=(at) { (at.strftime("%Y-%m-%d %H:%M")) } },
+    )
+}
+
+/// The day of a time in seconds since the Unix epoch, in UTC.
+fn day(seconds: i64) -> String {
+    jiff::Timestamp::from_second(seconds).map_or_else(
+        |_| seconds.to_string(),
+        |at| at.strftime("%Y-%m-%d").to_string(),
+    )
 }

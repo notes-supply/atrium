@@ -34,11 +34,11 @@ impl Atrium {
     /// A listener with `args` added to the flags, in front of `mneme`.
     pub async fn start(mneme: Stub, args: &[&str]) -> Self {
         let mneme = stub::serve(mneme).await;
-        Self::serve(mneme, args)
+        Self::serve(mneme, args).await
     }
 
     /// A listener with `args` added to the flags, in front of a running Mneme.
-    pub fn serve(mneme: Running, args: &[&str]) -> Self {
+    pub async fn serve(mneme: Running, args: &[&str]) -> Self {
         let fixed = [
             "atrium",
             "--addr",
@@ -51,7 +51,7 @@ impl Atrium {
             &mneme.base,
         ];
         let config = atrium::Config::try_parse_from([&fixed[..], args].concat()).unwrap();
-        let app = atrium::app(&config).unwrap();
+        let app = atrium::app(&config).await.unwrap();
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         listener.set_nonblocking(true).unwrap();
         let url = format!("http://{}", listener.local_addr().unwrap());
