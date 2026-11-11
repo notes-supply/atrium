@@ -1,6 +1,7 @@
 //! The few ways every module touches the page.
 
 use wasm_bindgen::prelude::*;
+use web_sys::js_sys;
 use web_sys::{CustomEvent, CustomEventInit, Document, Element, Event, EventTarget, HtmlDocument};
 
 pub fn document() -> Option<Document> {
@@ -115,4 +116,27 @@ pub fn fetch(url: &str, done: impl FnOnce(JsValue) + 'static) {
         .then(&read, &JsValue::UNDEFINED)
         .then(&done, quiet.as_ref());
     quiet.forget();
+}
+
+/// The value of `name` in the address's query, such as `only` in `?only=changed`.
+pub fn param(name: &str) -> Option<String> {
+    let search = web_sys::window()?.location().search().ok()?;
+    web_sys::UrlSearchParams::new_with_str(&search)
+        .ok()?
+        .get(name)
+}
+
+/// Runs `then` once, after `ms` milliseconds.
+pub fn later(ms: i32, then: impl FnOnce() + 'static) {
+    if let Some(window) = web_sys::window() {
+        let callback = Closure::once_into_js(then);
+        let _ = window
+            .set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), ms);
+    }
+}
+
+/// The visitor's clock: the hour and minute in their own time zone.
+pub fn clock() -> (u32, u32) {
+    let now = js_sys::Date::new_0();
+    (now.get_hours(), now.get_minutes())
 }

@@ -3,11 +3,15 @@ import { test as base, expect } from '@playwright/test';
 
 export { expect };
 
+// Headless Chromium sometimes aborts the stylesheet's cross-document view transition on a
+// link navigation, about one in five, with scripts off as well, so no module causes it.
+const ABORTED_TRANSITION = 'InvalidStateError: Transition was aborted because of invalid state. ViewTransition opt-in disabled';
+
 export const test = base.extend({
   page: async ({ page }, use) => {
     const errors = [];
     page.on('console', (message) => { if (message.type() === 'error') errors.push(message.text()); });
-    page.on('pageerror', (error) => errors.push(String(error)));
+    page.on('pageerror', (error) => { if (String(error) !== ABORTED_TRANSITION) errors.push(String(error)); });
     await use(page);
     expect(errors, 'console errors').toEqual([]);
   },

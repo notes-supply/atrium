@@ -4,21 +4,45 @@
 use wasm_bindgen::prelude::*;
 use web_sys::Element;
 
+mod carry;
+mod clock;
+mod diff;
 mod dom;
+mod greet;
 mod keys;
+mod light;
 mod palette;
 mod prefs;
+mod toc;
 
 type Mount = fn(&Element) -> Result<(), JsValue>;
 
 /// Each module by the name pages give it in `data-module`.
 const MODULES: &[(&str, Mount)] = &[
+    ("carry", |element| {
+        carry::mount(element);
+        Ok(())
+    }),
+    ("clock", |element| {
+        clock::mount(element);
+        Ok(())
+    }),
+    ("diff", diff::mount),
+    ("greet", |element| {
+        greet::mount(element);
+        Ok(())
+    }),
     ("keys", keys::mount),
+    ("light", |element| {
+        light::mount(element);
+        Ok(())
+    }),
     ("palette", palette::mount),
     ("prefs", |element| {
         prefs::mount(element);
         Ok(())
     }),
+    ("toc", toc::mount),
 ];
 
 /// Mounts every module the page names.
