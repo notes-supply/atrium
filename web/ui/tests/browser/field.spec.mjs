@@ -8,10 +8,17 @@ const countFrames = (page) => page.addInitScript(() => {
   const ask = window.requestAnimationFrame.bind(window);
   window.requestAnimationFrame = (callback) => { window.frames_asked++; return ask(callback); };
 });
+const framesAsked = (page) => page.evaluate(() => window.frames_asked);
 const framesOver = async (page, ms) => {
-  const before = await page.evaluate(() => window.frames_asked);
+  const before = await framesAsked(page);
   await page.waitForTimeout(ms);
-  return (await page.evaluate(() => window.frames_asked)) - before;
+  return (await framesAsked(page)) - before;
+};
+// Waits until the field has asked for more frames, as it does frame after frame while it
+// moves. A frame takes as long as the machine needs, so this counts frames, not time.
+const keepsAsking = async (page) => {
+  const before = await framesAsked(page);
+  await expect.poll(() => framesAsked(page), 'asks for frame after frame').toBeGreaterThan(before + 5);
 };
 
 // Draws one frame through the ?perf bench and copies the canvas in the same task, before
@@ -77,18 +84,17 @@ test('field: breathes while shown, and stops asking for frames when hidden', asy
   await countFrames(page);
   await open(page, 'wiki');
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
-  expect(await framesOver(page, 500)).toBeGreaterThan(5);
+  await keepsAsking(page);
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { value: true, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  await page.waitForTimeout(100);
   expect(await framesOver(page, 500)).toBe(0);
   await page.evaluate(() => {
     Object.defineProperty(document, 'hidden', { value: false, configurable: true });
     document.dispatchEvent(new Event('visibilitychange'));
   });
-  expect(await framesOver(page, 500)).toBeGreaterThan(5);
+  await keepsAsking(page);
 });
 
 test('field: holds a still frame under reduced motion', async ({ page }) => {
@@ -96,17 +102,19 @@ test('field: holds a still frame under reduced motion', async ({ page }) => {
   await countFrames(page);
   await open(page, 'wiki');
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
-  await page.waitForTimeout(300);
   expect(await framesOver(page, 600)).toBe(0);
 });
 
+// The springs ease by at most 50 ms a frame, so on a slow machine calm takes more time to
+// settle, never more frames.
 test('field: settles to a still frame in calm', async ({ page }) => {
   await countFrames(page);
   await open(page, 'wiki');
+  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
+  await keepsAsking(page);
   await page.locator('.prefs-mast .swatch[data-intensity=calm]').click();
   await page.mouse.move(5, 5);
-  await page.waitForTimeout(3000);
-  expect(await framesOver(page, 600)).toBe(0);
+  await expect.poll(() => framesOver(page, 600), { message: 'still', timeout: 20_000 }).toBe(0);
 });
 
 test('field: takes the night colours when the theme switches', async ({ page }) => {
@@ -133,16 +141,6 @@ test('perf: ?perf shows the readout, and nothing shows without it', async ({ pag
   await expect(readout).toContainText(/^gpu {2}(no timer query|\d+\.\d\d ms)$/m);
 });
 
-test('field: the open palette pulls the lattice to itself', async ({ page }) => {
-  await open(page, 'wiki', 'perf');
-  await page.keyboard.press('Control+k');
-  const palette = await page.locator('dialog.palette').boundingBox();
-  await page.waitForTimeout(800);
-  const box = [Math.round(palette.x), Math.round(palette.y), Math.round(palette.width), Math.round(palette.height)];
-  const [whole, under] = await sample(page, [box]);
-  expect(under.dots).toBeGreaterThan(whole.dots * 2);
-});
-
 // How much denser the lattice is under the open palette than across the whole canvas, once
 // the springs have eased it there. Each sample pauses the field, so it resumes after.
 async function pulled(page) {
@@ -154,6 +152,14 @@ async function pulled(page) {
     return under.dots / whole.dots;
   }, 'denser under the palette').toBeGreaterThan(2);
 }
+
+test('field: the open palette pulls the lattice to itself', async ({ page }) => {
+  await open(page, 'wiki', 'perf');
+  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
+  await page.keyboard.press('Control+k');
+  await expect(page.locator('dialog.palette')).toBeVisible();
+  await pulled(page);
+});
 
 test('field: a palette opened before the field starts pulls it too', async ({ page }) => {
   let release;
