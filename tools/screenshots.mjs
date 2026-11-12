@@ -1,8 +1,9 @@
 // The README's screenshots, of `atrium --demo` in the browser tests' Chromium with the field
 // in WebGL through SwiftShader, at 1440 by 900, into docs/images: home in day and night, a
 // page, a diff and the machines. Reduced motion skips the entrance and holds the field on
-// its still frame, which draws everything a surface asks of it at once, so each image is
-// the same on every run. The browser's clock is the demo's, 09:41 in Stockholm. Run through
+// its still frame, which draws everything a surface asks of it at once, so every run draws
+// the same pictures, but for one level of colour in the few pixels where Chromium dithers a
+// gradient. The browser's clock is the demo's, 09:41 in Stockholm. Run through
 // tools/browser.sh (mise run screenshots), which sets ATRIUM_URL.
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';

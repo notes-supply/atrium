@@ -47,7 +47,7 @@ The gate builds the Wasm bundles and holds them to their size budgets, checks fo
 
 `mise run capture` records a short visit to the demo and screenshots home, a page and the machines at both widths in day and night, into `target/check/final`.
 
-`mise run screenshots` makes the README's screenshots in `docs/images` again: home in day and night, a page, a diff and the machines, at 1440 by 900. Reduced motion holds the field on its still frame, so a run that changes nothing writes the same files.
+`mise run screenshots` makes the README's screenshots in `docs/images` again: home in day and night, a page, a diff and the machines, at 1440 by 900. Reduced motion holds the field on its still frame, so a run draws the same pictures as the last, though a few pixels of the theme button's gradient, which Chromium dithers, may differ by one level of colour.
 
 These run in Playwright's image through `tools/browser.sh`, which needs Docker and three free ports from `PORT` (18760 by default), and installs Playwright 1.64.1 and axe from `package-lock.json` with `npm ci` in the image.
 
