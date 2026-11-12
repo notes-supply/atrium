@@ -16,5 +16,8 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM gcr.io/distroless/static-debian13:nonroot@sha256:25ac8f0c3b2334a9eb05452266bd4697864a8c8ef0ef71e5e6480d7f92868329
 COPY --from=build /atrium /usr/local/bin/atrium
 USER 65532:65532
+# A container's port is published from its own network, so the image listens on every
+# address of it. The binary alone listens on loopback.
+ENV ATRIUM_ADDR=0.0.0.0:8080
 LABEL org.opencontainers.image.description="Atrium, a private homepage and dashboard"
 ENTRYPOINT ["/usr/local/bin/atrium"]

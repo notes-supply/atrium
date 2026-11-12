@@ -21,7 +21,8 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 ## Requests and responses
 
 - **A refused viewer gets the same 404 page as an unknown address,** so a public listener would not tell which private routes exist.
-- **A request naming a host not in `--allowed-hosts` gets 421.** `/healthz` answers any host, since a kubelet probe names the pod's address.
+- **A request naming a host not in `--allowed-hosts` gets 421.** `/healthz` answers any host, since a kubelet probe names the pod's address. The port is not compared, and an IPv6 address matches with or without its brackets, since `Host` writes it with them and a flag may not.
+- **The binary listens on `127.0.0.1:8080` and allows `localhost`, `127.0.0.1` and `[::1]` by default,** so a first run on a laptop is reachable from that laptop alone, and a page on another site cannot reach it through a name it controls. The image sets `ATRIUM_ADDR=0.0.0.0:8080`, since a container's port is published from its own network, so a deployment of the image listens as before.
 - **`/assets/*` sits outside the features** and answers every viewer. It holds the stylesheet, the fonts, the loader and the bundles, which carry nothing private, and a public listener will need the same files. The brief allowed only health checks outside a feature.
 - **The CSP adds `connect-src 'self'`** to the brief's list. With `default-src 'none'` the module loader could not fetch its `.wasm` without it.
 - **Every page's `ETag` is a hash of the rendered body,** not Mneme's. A page holds Atrium's own markup and navigation as well as Mneme's data, so Mneme's tag would stay the same across an Atrium release that changes the page. Pages are also `no-store`, as the brief asks, so browsers rarely send `If-None-Match`; other clients can.

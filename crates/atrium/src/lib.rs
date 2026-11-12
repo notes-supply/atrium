@@ -30,18 +30,19 @@ use crate::visit::{Clock, Visits};
 #[derive(Debug, Clone, clap::Parser)]
 #[command(version, about)]
 pub struct Config {
-    /// The address to listen on.
-    #[arg(long, env = "ATRIUM_ADDR", default_value = "0.0.0.0:8080")]
+    /// The address to listen on. Loopback only by default; the image sets `0.0.0.0:8080`.
+    #[arg(long, env = "ATRIUM_ADDR", default_value = "127.0.0.1:8080")]
     pub addr: SocketAddr,
     /// Who reaches this listener: `tailnet` sees private features, `anonymous` only public ones.
     #[arg(long, env = "ATRIUM_VIEWER")]
     pub viewer: Viewer,
-    /// The host names requests may name, separated by commas. Health checks may name any.
+    /// The host names requests may name, separated by commas, each with any port. An IPv6
+    /// address may be written with or without its brackets. Health checks may name any.
     #[arg(
         long,
         env = "ATRIUM_ALLOWED_HOSTS",
         value_delimiter = ',',
-        default_value = "localhost"
+        default_values = ["localhost", "127.0.0.1", "[::1]"]
     )]
     pub allowed_hosts: Vec<String>,
     /// Mneme's base URL, such as `http://mneme:8080`.
@@ -194,6 +195,20 @@ mod tests {
 
     fn parse(args: &[&str]) -> Config {
         Config::try_parse_from([&["atrium", "--viewer", "tailnet"], args].concat()).unwrap()
+    }
+
+    #[test]
+    fn it_listens_on_loopback_for_loopback_names_by_default() {
+        let config = parse(&["--mneme-url", "http://mneme"]);
+        assert_eq!(config.addr, SocketAddr::from(([127, 0, 0, 1], 8080)));
+        assert_eq!(config.allowed_hosts, ["localhost", "127.0.0.1", "[::1]"]);
+        let named = parse(&[
+            "--mneme-url",
+            "http://mneme",
+            "--allowed-hosts",
+            "a.example,b",
+        ]);
+        assert_eq!(named.allowed_hosts, ["a.example", "b"]);
     }
 
     #[test]
