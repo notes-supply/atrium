@@ -1,0 +1,44 @@
+# Atrium for one wiki folder on this machine, as a systemd user unit. It starts its own
+# `mneme serve --folder` for ~/wiki and serves the wiki on 127.0.0.1:8080, to this machine
+# alone.
+#
+# Install atrium and mneme in ~/.local/bin, copy this file to ~/.config/systemd/user/, and run
+#
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now atrium.service
+#
+# then open http://localhost:8080. Its logs are in `journalctl --user -u atrium`. To share it
+# on a tailnet through `tailscale serve`, add that machine's name to the allowed hosts below.
+
+[Unit]
+Description=Atrium for %h/wiki
+
+[Service]
+Type=exec
+ExecStart=%h/.local/bin/atrium --wiki-folder %h/wiki --mneme-bin %h/.local/bin/mneme
+# Environment=ATRIUM_ALLOWED_HOSTS=localhost,MACHINE.TAILNET.ts.net
+# Atrium stops when its Mneme does, so that both start again.
+Restart=on-failure
+RestartSec=10
+# SIGTERM goes to Atrium alone, which finishes the requests in flight and then stops its Mneme.
+KillMode=mixed
+TimeoutStopSec=30
+
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+UMask=0077
+
+[Install]
+WantedBy=default.target

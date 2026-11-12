@@ -1,6 +1,6 @@
 # Atrium
 
-Atrium is a private homepage and dashboard for one person, reached over a tailnet. Its first feature reads the wiki that Mneme holds, through Mneme's JSON reading API.
+Atrium is a private homepage and dashboard for one person. Its first feature reads a wiki of Markdown files kept in Git, through the JSON reading API of [Mneme](https://github.com/notes-supply/mneme): from a wiki folder on your own machine, or from a Mneme server.
 
 Pages are HTML that works without script, in the design the owner chose, which lives in `crates/atrium-ui`. Rust Wasm modules add behaviour on top, loaded by `data-module` attributes: the field behind every page, the command palette, keys, live search, link previews and the rest, in two bundles described in `web/README.md`.
 
@@ -21,7 +21,39 @@ install -D -m 755 "atrium-$arch-linux" ~/.local/bin/atrium
 
 From a checkout, `mise run build:wasm` and then `cargo build --release --locked -p atrium` build the same server, since it embeds the Wasm bundles.
 
-## Run it
+Install Mneme the same way from [its releases](https://github.com/notes-supply/mneme), as `~/.local/bin/mneme`. A wiki on your own machine needs it only to read the folder; Atrium starts it.
+
+## Run it on your machine
+
+With a wiki folder, a Git clone of the wiki such as the one Mneme's autosave keeps, one command serves it:
+
+```sh
+atrium --wiki-folder ~/wiki
+```
+
+Then open http://localhost:8080. Atrium starts `mneme serve --folder ~/wiki` as its own child process, reads the wiki through it and stops it when it stops. Mneme follows the folder's `main`, so a new commit shows within seconds. Atrium runs `mneme` from `PATH`, or the binary `--mneme-bin` names, and stops with an error if Mneme does, so that a supervisor can start both again.
+
+Every page shows the whole wiki and there is no login, so with `--wiki-folder` Atrium listens on loopback only, `127.0.0.1:8080` by default, and refuses any other `--addr`. The viewer is `owner`.
+
+To keep it running, `contrib/atrium.service` is a systemd user unit for `~/wiki` with both binaries in `~/.local/bin`:
+
+```sh
+cp contrib/atrium.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now atrium.service
+journalctl --user -u atrium
+```
+
+To reach it from your other devices, put it on your tailnet with `tailscale serve` on the same machine, which keeps Atrium on loopback and adds HTTPS, and allow the name it is reached by:
+
+```sh
+tailscale serve --bg 8080
+atrium --wiki-folder ~/wiki --allowed-hosts localhost,<machine>.<tailnet>.ts.net
+```
+
+Then open `https://<machine>.<tailnet>.ts.net`. In the unit, uncomment its `Environment=ATRIUM_ALLOWED_HOSTS=` line with that name. Everyone your tailnet lets reach this machine can then read the whole wiki, so check its access rules first. Never use `tailscale funnel` for it: that would put the wiki on the public internet.
+
+## Run it from a checkout
 
 ```sh
 mise run build:wasm
@@ -33,14 +65,16 @@ cargo run -- --viewer owner --mneme-url http://127.0.0.1:8081
 | Flag | Environment | Meaning |
 | --- | --- | --- |
 | `--addr` | `ATRIUM_ADDR` | Where to listen. `127.0.0.1:8080` by default; the image sets `0.0.0.0:8080`. |
-| `--viewer` | `ATRIUM_VIEWER` | Who reaches this listener: `owner`, the person this Atrium belongs to, sees private features, and `anonymous` only public ones. `tailnet` is another name for `owner`. Required. |
+| `--viewer` | `ATRIUM_VIEWER` | Who reaches this listener: `owner`, the person this Atrium belongs to, sees private features, and `anonymous` only public ones. `tailnet` is another name for `owner`. Required, but `owner` by default with `--wiki-folder`. |
 | `--allowed-hosts` | `ATRIUM_ALLOWED_HOSTS` | Host names requests may name, comma-separated, each with any port. `localhost,127.0.0.1,[::1]` by default. `/healthz` answers any. |
-| `--mneme-url` | `ATRIUM_MNEME_URL` | Mneme's base URL. Required. |
+| `--mneme-url` | `ATRIUM_MNEME_URL` | Mneme's base URL. Required without `--wiki-folder` or `--demo`. |
+| `--wiki-folder` | `ATRIUM_WIKI_FOLDER` | A wiki folder on this machine, read through a `mneme serve --folder` that Atrium starts. Needs a loopback `--addr`, and makes `owner` the default viewer. |
+| `--mneme-bin` | `ATRIUM_MNEME_BIN` | The Mneme that `--wiki-folder` starts. `mneme` on `PATH` by default. |
 | `--mneme-timeout-ms` | `ATRIUM_MNEME_TIMEOUT_MS` | How long one call to Mneme may take. 3000 by default. Home waits at most 500 ms. |
 | `--time-zone` | `ATRIUM_TIME_ZONE` | The reader's time zone, for every time shown and the light of the hour. The system's by default, from `TZ` or `/etc/localtime`, or UTC when it names none. The demo's is `Europe/Stockholm`. |
 | `--demo` | | Serve the invented wiki instead of a Mneme, `--mneme-url` not needed. |
 
-Logs are JSON lines on standard error, one per request. SIGTERM stops it after the requests in flight.
+Logs are JSON lines on standard error, one per request, with the lines of the Mneme that `--wiki-folder` starts among them. SIGTERM stops it after the requests in flight.
 
 ## How it is built
 
@@ -53,6 +87,7 @@ Logs are JSON lines on standard error, one per request. SIGTERM stops it after t
 | `web/ui`, `web/field` | The browser modules in two Wasm bundles, every small behaviour and the WebGL field, with their browser tests. `web/loader.js` is the only script a page loads. |
 | `tools/browser.sh` | Runs a command in Playwright's image against `atrium --demo`, with the npm packages `package-lock.json` pins. |
 | `tools/check` | The parity check against the prototype. |
+| `contrib/atrium.service` | A systemd user unit for a wiki folder on this machine. |
 
 A feature implements `atrium_core::Feature`: an id, a name, its routes, and optionally its access, navigation link, home tiles and palette commands. Access defaults to `Private`, which only the owner sees. The server builds its router, navigation, home page and palette from the registry alone, and one middleware refuses a route to a viewer its feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
 
