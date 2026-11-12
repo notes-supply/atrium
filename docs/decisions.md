@@ -44,11 +44,11 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 
 ## The Wasm pipeline
 
-- **The pipeline is shebang-web's:** `build-std` with `optimize_for_size`, immediate abort, a `wasm` profile at `opt-level = "z"` with fat LTO, `wasm-bindgen --target web`, then `wasm-opt -Oz` with the features rustc enables. The crate is built as a `cdylib` only in `mise run build:wasm`, so native builds and tests treat it as a plain library.
+- **The pipeline is tuned for size:** `build-std` with `optimize_for_size`, immediate abort, a `wasm` profile at `opt-level = "z"` with fat LTO, `wasm-bindgen --target web`, then `wasm-opt -Oz` with the features rustc enables. The crate is built as a `cdylib` only in `mise run build:wasm`, so native builds and tests treat it as a plain library.
 - **wasm-bindgen is pinned at 0.2.129, one release behind crates.io's 0.2.130.** The CLI must equal the crate, and the build machine has a provenance-checked `mise.lock` entry for the 0.2.129 CLI and none for 0.2.130; writing a new one needs GitHub, which this build was not to use. Move both together.
 - **The server embeds the built files** with `include_bytes!` from `target/web`, so `mise run build:wasm` comes before any Cargo build of the server. The gate's clippy and test tasks depend on it, and it is skipped when its sources have not changed.
 - **Two bundles under hashed names.** The loader, `ui` and `field`, glue and `.wasm` each, are assets like the stylesheet, and the loader's own `<script>` names the other four. The output rules allow that one deferred script, at most 1 KB, with nothing inline.
-- **The glue and the loader are not minified.** shebang-web minifies with Bun, which would be one more tool for about 1.5 KB of brotli. The loader is 739 bytes as written, 330 compressed.
+- **The glue and the loader are not minified.** Minifying them would need one more tool, such as Bun, for about 1.5 KB of brotli. The loader is 739 bytes as written, 330 compressed.
 - **Every page loads the loader,** since every page has modules (`keys`, `light`, `carry`, `field`, `prefs`, `palette`).
 - **A link's preview is fetched, not written into the page.** The article names `/wiki/preview.json`; the module asks it for a link once the reader means it, after 320 ms of hover or on focus, keeps each answer for the page's life, and shows nothing when the fetch fails. A page with many links stays as small as one with none.
 - **With scripts on, the visitor's clock wins** for the masthead clock, the greeting and the light of the hour. The server's `--time-zone` writes the page without scripts and the first paint; the two agree whenever the visitor is in that zone, so home does not change as the modules start.
