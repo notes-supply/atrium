@@ -253,9 +253,9 @@ main { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-
 .dk-data { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; row-gap: 1px; margin: 2px 0 0; font: 400 var(--fs-mono)/1.45 var(--mono); color: var(--ink-3); }
 .dk-data dt { color: var(--ink-3); }
 .dk-data dd { margin: 0; font-weight: 500; color: var(--ink); }
-.dock-card[data-m="blackbox"] { --tone: var(--bb-y); }
-.dock-card[data-m="apollo"] { --tone: var(--ap-t); }
-.dock-card[data-m="aeolus"] { --tone: var(--ae-y); }
+.dock-card[data-m="ironbark"] { --tone: var(--bb-y); }
+.dock-card[data-m="laurel"] { --tone: var(--ap-t); }
+.dock-card[data-m="willow"] { --tone: var(--ae-y); }
 .vignette { display: none; }
 
 /* the drawing */
@@ -296,22 +296,22 @@ main { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-
 :is(.map-svg, .vignette) .m[data-want="1"] .mk { opacity: .7; }
 :is(.map-svg, .vignette) .m[data-want="2"] :is(.sd, .mk) { opacity: 1; }
 :is(.map-svg, .vignette) .m:is([data-want="1"], [data-want="2"]) .ln { stroke: var(--map-line); }
-.map:has(.dock-card[data-m="blackbox"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="blackbox"] :is(.sd, .mk),
-.map:has(.dock-card[data-m="apollo"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="apollo"] :is(.sd, .mk),
-.map:has(.dock-card[data-m="aeolus"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="aeolus"] :is(.sd, .mk),
+.map:has(.dock-card[data-m="ironbark"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="ironbark"] :is(.sd, .mk),
+.map:has(.dock-card[data-m="laurel"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="laurel"] :is(.sd, .mk),
+.map:has(.dock-card[data-m="willow"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="willow"] :is(.sd, .mk),
 .map-svg .m:hover :is(.sd, .mk), .dock-card:is(:hover, :focus-visible) .vignette .m :is(.sd, .mk) { opacity: 1 !important; }
-.map:has(.dock-card[data-m="blackbox"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="blackbox"] .ln,
-.map:has(.dock-card[data-m="apollo"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="apollo"] .ln,
-.map:has(.dock-card[data-m="aeolus"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="aeolus"] .ln { stroke: var(--map-line); }
-.map:has(.dock-card[data-m="blackbox"]:is(:hover, :focus-visible, [data-force~="hover"])) .dock[data-m="blackbox"] polyline,
-.map:has(.dock-card[data-m="apollo"]:is(:hover, :focus-visible, [data-force~="hover"])) .dock[data-m="apollo"] polyline,
-.map:has(.dock-card[data-m="aeolus"]:is(:hover, :focus-visible, [data-force~="hover"])) .dock[data-m="aeolus"] polyline,
-.map:has(.m[data-m="blackbox"]:hover) .dock[data-m="blackbox"] polyline,
-.map:has(.m[data-m="apollo"]:hover) .dock[data-m="apollo"] polyline,
-.map:has(.m[data-m="aeolus"]:hover) .dock[data-m="aeolus"] polyline { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.4; }
-.map:has(.m[data-m="blackbox"]:hover) .dock-card[data-m="blackbox"],
-.map:has(.m[data-m="apollo"]:hover) .dock-card[data-m="apollo"],
-.map:has(.m[data-m="aeolus"]:hover) .dock-card[data-m="aeolus"] { border-color: var(--ink); }
+.map:has(.dock-card[data-m="ironbark"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="ironbark"] .ln,
+.map:has(.dock-card[data-m="laurel"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="laurel"] .ln,
+.map:has(.dock-card[data-m="willow"]:is(:hover, :focus-visible, [data-force~="hover"])) .m[data-m="willow"] .ln { stroke: var(--map-line); }
+.map:has(.dock-card[data-m="ironbark"]:is(:hover, :focus-visible, [data-force~="hover"])) .dock[data-m="ironbark"] polyline,
+.map:has(.dock-card[data-m="laurel"]:is(:hover, :focus-visible, [data-force~="hover"])) .dock[data-m="laurel"] polyline,
+.map:has(.dock-card[data-m="willow"]:is(:hover, :focus-visible, [data-force~="hover"])) .dock[data-m="willow"] polyline,
+.map:has(.m[data-m="ironbark"]:hover) .dock[data-m="ironbark"] polyline,
+.map:has(.m[data-m="laurel"]:hover) .dock[data-m="laurel"] polyline,
+.map:has(.m[data-m="willow"]:hover) .dock[data-m="willow"] polyline { stroke: var(--accent); stroke-dasharray: none; stroke-width: 1.4; }
+.map:has(.m[data-m="ironbark"]:hover) .dock-card[data-m="ironbark"],
+.map:has(.m[data-m="laurel"]:hover) .dock-card[data-m="laurel"],
+.map:has(.m[data-m="willow"]:hover) .dock-card[data-m="willow"] { border-color: var(--ink); }
 /* when nothing is known (the wiki is away), everything rests coarser */
 .map.unknown .m :is(.dz) { opacity: .45; }
 .map.unknown .m .mk { opacity: 0; }
@@ -319,7 +319,7 @@ main { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-
 @keyframes packet { to { stroke-dashoffset: -100; } }
 @media (prefers-reduced-motion: no-preference) {
   :root[data-intensity="lively"] .map-svg .cable:not([data-want="2"]) .pk { opacity: 1; animation: packet 3.2s linear infinite; }
-  :root[data-intensity="lively"] .map-svg .cable[data-m="aeolus"] .pk { animation-direction: reverse; }
+  :root[data-intensity="lively"] .map-svg .cable[data-m="willow"] .pk { animation-direction: reverse; }
 }
 
 .tiles { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; row-gap: var(--gutter); align-items: start; }

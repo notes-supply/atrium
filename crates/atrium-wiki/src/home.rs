@@ -459,8 +459,8 @@ mod tests {
                 newest: Some(LAST - 600),
             }),
             machines: Some(vec![
-                ("blackbox".into(), Want::Rest, String::new()),
-                ("aeolus".into(), Want::Rest, String::new()),
+                ("ironbark".into(), Want::Rest, String::new()),
+                ("willow".into(), Want::Rest, String::new()),
             ]),
             questions: Some(0),
         };
@@ -503,23 +503,23 @@ mod tests {
         let facts = Facts {
             machines: Some(vec![
                 (
-                    "blackbox".into(),
+                    "ironbark".into(),
                     Want::Look,
                     "left one file out of a save".into(),
                 ),
-                ("aeolus".into(), Want::Needs, "is blocked".into()),
+                ("willow".into(), Want::Needs, "is blocked".into()),
             ]),
             ..Facts::default()
         };
         assert_eq!(
             said(&facts),
-            "aeolus is blocked, and blackbox left one file out of a save."
+            "willow is blocked, and ironbark left one file out of a save."
         );
         let one = Facts {
-            machines: Some(vec![("aeolus".into(), Want::Needs, "is behind".into())]),
+            machines: Some(vec![("willow".into(), Want::Needs, "is behind".into())]),
             ..Facts::default()
         };
-        assert_eq!(said(&one), "aeolus is behind.");
+        assert_eq!(said(&one), "willow is behind.");
     }
 
     #[test]

@@ -223,7 +223,7 @@ pub fn judge(machine: &Machine, record: Option<&Status>, now: i64) -> Copy {
 /// the first one left. A machine beyond the two is not on the map.
 #[must_use]
 pub fn places(copies: &[Copy]) -> Vec<(Place, Option<&Copy>)> {
-    let folders = [Place::Blackbox, Place::Aeolus];
+    let folders = [Place::Ironbark, Place::Willow];
     let mut taken: Vec<(Place, Option<&Copy>)> =
         folders.iter().map(|place| (*place, None)).collect();
     let mut rest = Vec::new();
@@ -249,7 +249,7 @@ fn place_of(copies: &[Copy], name: &str) -> Place {
     places(copies)
         .into_iter()
         .find(|(_, copy)| copy.is_some_and(|copy| copy.name == name))
-        .map_or(Place::Aeolus, |(place, _)| place)
+        .map_or(Place::Willow, |(place, _)| place)
 }
 
 fn names(list: &[&str]) -> String {
@@ -349,8 +349,8 @@ fn dock_card(local: &Local, place: Place, copy: Option<&Copy>, known: &Known<'_>
 
 fn record_card(local: &Local, known: &Known<'_>) -> Markup {
     html! {
-        a.dock-card.surface #dock-apollo data-m="apollo" data-want="0" href="/wiki/machines#apollo" data-surface {
-            (draw::place(Place::Apollo, Want::Rest, "vignette"))
+        a.dock-card.surface #dock-laurel data-m="laurel" data-want="0" href="/wiki/machines#laurel" data-surface {
+            (draw::place(Place::Laurel, Want::Rest, "vignette"))
             span.dk-head { span.dk-tone aria-hidden="true" {} span.dk-name { (RECORD) } span.dk-role { "the record" } }
             @match known {
                 Known::Known { record: Some(status), .. } => {
@@ -408,9 +408,9 @@ pub fn map_figure(local: &Local, known: &Known<'_>, heading: &str) -> Markup {
             h2 #map-h .map-h.label { (heading) }
             div.map-stage { (draw::map(want, &title)) }
             ul.docks aria-label="Places" {
-                li { (card(Place::Blackbox)) }
+                li { (card(Place::Ironbark)) }
                 li { (record_card(local, known)) }
-                li { (card(Place::Aeolus)) }
+                li { (card(Place::Willow)) }
             }
         }
     }
@@ -490,9 +490,9 @@ async fn machines(shell: &Shell, mneme: &Mneme) -> Result<Page, Failure> {
             (map_figure(local, &known, "The map"))
             (legend())
             @for copy in &copies { (machine_section(local, copy, place_of(&copies, &copy.name))) }
-            section.mach.surface #apollo data-surface data-want="0" aria-labelledby="m-apollo" {
-                header.mach-head { h2 #m-apollo { (RECORD) } span.dk-role { "the record" } }
-                (draw::place(Place::Apollo, Want::Rest, "vignette"))
+            section.mach.surface #laurel data-surface data-want="0" aria-labelledby="m-laurel" {
+                header.mach-head { h2 #m-laurel { (RECORD) } span.dk-role { "the record" } }
+                (draw::place(Place::Laurel, Want::Rest, "vignette"))
                 div.mach-state {
                     p.word { (mark(Mark::Want(Want::Rest))) "holding" }
                     p.why { "Every machine pushes here. What Atrium knows of " (RECORD) " is the wiki's own status." }
@@ -522,7 +522,7 @@ mod tests {
 
     fn machine(state: &str, seen: Option<i64>, current: bool) -> Machine {
         serde_json::from_value(serde_json::json!({
-            "name": "aeolus", "state": state, "detail": "", "seen": seen, "current": current,
+            "name": "willow", "state": state, "detail": "", "seen": seen, "current": current,
         }))
         .unwrap()
     }
@@ -625,7 +625,7 @@ mod tests {
                 NOW,
             )
         };
-        let copies = [copy("cassia"), copy("aeolus"), copy("dora")];
+        let copies = [copy("cassia"), copy("willow"), copy("dora")];
         let placed: Vec<_> = places(&copies)
             .into_iter()
             .map(|(p, c)| (p, c.map(|c| c.name.as_str())))
@@ -633,8 +633,8 @@ mod tests {
         assert_eq!(
             placed,
             [
-                (Place::Blackbox, Some("cassia")),
-                (Place::Aeolus, Some("aeolus"))
+                (Place::Ironbark, Some("cassia")),
+                (Place::Willow, Some("willow"))
             ]
         );
     }

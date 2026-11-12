@@ -89,14 +89,14 @@ struct PageData {
 const PAGES: [PageData; 16] = [
     PageData {
         key: "restic",
-        title: "Restic backups on apollo",
+        title: "Restic backups on laurel",
         path: "homelab/backup-rotation.md",
         words: 1284,
         created: "2026-06-14T10:02",
         updated: "2026-11-11T08:12",
         versions: 23,
         churn: 4210,
-        text: "apollo runs restic every night against two repositories. The first lives on the cluster's second pool and answers most restores in seconds. The offsite copy is on a borrowed disk, reached over the tailnet.",
+        text: "laurel runs restic every night against two repositories. The first lives on the cluster's second pool and answers most restores in seconds. The offsite copy is on a borrowed disk, reached over the tailnet.",
     },
     PageData {
         key: "corne",
@@ -129,7 +129,7 @@ const PAGES: [PageData; 16] = [
         updated: "2026-11-11T07:31",
         versions: 12,
         churn: 1104,
-        text: "Only apollo may reach the backup target, on port 8000, and only between 03:00 and 06:00. Phones reach Atrium and nothing else.",
+        text: "Only laurel may reach the backup target, on port 8000, and only between 03:00 and 06:00. Phones reach Atrium and nothing else.",
     },
     PageData {
         key: "plants",
@@ -199,8 +199,8 @@ const PAGES: [PageData; 16] = [
     },
     PageData {
         key: "gpu",
-        title: "blackbox GPU passthrough notes",
-        path: "homelab/blackbox-gpu.md",
+        title: "ironbark GPU passthrough notes",
+        path: "homelab/ironbark-gpu.md",
         words: 1120,
         created: "2026-08-19T22:10",
         updated: "2026-11-06T23:40",
@@ -209,9 +209,9 @@ const PAGES: [PageData; 16] = [
         text: "Snapshot the VM before changing the IOMMU groups. The nightly restic job skips the VM disk on purpose.",
     },
     PageData {
-        key: "apollo",
-        title: "apollo cluster layout",
-        path: "homelab/apollo.md",
+        key: "laurel",
+        title: "laurel cluster layout",
+        path: "homelab/laurel.md",
         words: 1460,
         created: "2026-01-04T15:00",
         updated: "2026-11-05T06:01",
@@ -326,7 +326,7 @@ fn changes() -> Vec<Change> {
             "2026-11-11T09:12",
             "corne",
             "edited",
-            "blackbox",
+            "ironbark",
             31,
             61,
             12,
@@ -337,7 +337,7 @@ fn changes() -> Vec<Change> {
                 "2026-11-11T08:12",
                 "restic",
                 "edited",
-                "blackbox",
+                "ironbark",
                 23,
                 142,
                 38,
@@ -347,19 +347,19 @@ fn changes() -> Vec<Change> {
             "2026-11-11T08:03",
             "autosave",
             "edited",
-            "blackbox",
+            "ironbark",
             17,
             18,
             40,
         ),
-        change("2026-11-11T07:31", "acl", "edited", "aeolus", 12, 34, 29),
-        change("2026-11-11T03:15", "plants", "created", "aeolus", 1, 212, 0),
+        change("2026-11-11T07:31", "acl", "edited", "willow", 12, 34, 29),
+        change("2026-11-11T03:15", "plants", "created", "willow", 1, 212, 0),
         change("2026-11-10T22:48", "reading", "edited", "rowan", 9, 210, 0),
         change(
             "2026-11-10T19:30",
             "sourdough",
             "edited",
-            "aeolus",
+            "willow",
             14,
             12,
             9,
@@ -372,21 +372,21 @@ fn changes() -> Vec<Change> {
             "2026-11-09T06:02",
             "restic",
             "edited",
-            "blackbox",
+            "ironbark",
             22,
             90,
             12,
         ),
         Change {
             overlap: Some(("style", 18)),
-            ..change("2026-11-09T05:40", "style", "edited", "aeolus", 19, 55, 61)
+            ..change("2026-11-09T05:40", "style", "edited", "willow", 19, 55, 61)
         },
-        change("2026-11-09T00:20", "grinder", "edited", "aeolus", 6, 8, 3),
+        change("2026-11-09T00:20", "grinder", "edited", "willow", 6, 8, 3),
         change(
             "2026-11-08T21:14",
             "corne",
             "edited",
-            "blackbox",
+            "ironbark",
             30,
             340,
             18,
@@ -397,7 +397,7 @@ fn changes() -> Vec<Change> {
             "2026-11-07T04:12",
             "autosave",
             "edited",
-            "aeolus",
+            "willow",
             16,
             22,
             6,
@@ -414,25 +414,25 @@ fn restic_events() -> Vec<Change> {
     vec![
         Change {
             overlap: Some(("restic", 21)),
-            ..edit("2026-11-11T08:12", "blackbox", 23, 1284, 142, 38)
+            ..edit("2026-11-11T08:12", "ironbark", 23, 1284, 142, 38)
         },
-        edit("2026-11-09T06:02", "blackbox", 22, 1180, 90, 12),
-        edit("2026-11-05T06:01", "aeolus", 21, 1102, 41, 23),
+        edit("2026-11-09T06:02", "ironbark", 22, 1180, 90, 12),
+        edit("2026-11-05T06:01", "willow", 21, 1102, 41, 23),
         edit("2026-10-28T06:04", "rowan", 20, 1084, 64, 0),
-        edit("2026-10-26T06:00", "blackbox", 19, 1020, 120, 44),
+        edit("2026-10-26T06:00", "ironbark", 19, 1020, 120, 44),
         Change {
             overlap: Some(("restic", 17)),
-            ..edit("2026-10-19T22:31", "aeolus", 18, 944, 31, 30)
+            ..edit("2026-10-19T22:31", "willow", 18, 944, 31, 30)
         },
-        edit("2026-10-12T06:02", "blackbox", 17, 943, 208, 96),
-        edit("2026-09-30T06:01", "blackbox", 16, 831, 55, 12),
+        edit("2026-10-12T06:02", "ironbark", 17, 943, 208, 96),
+        edit("2026-09-30T06:01", "ironbark", 16, 831, 55, 12),
         Change {
             from: Some("homelab/backups.md"),
             words: 788,
             ..change("2026-09-21T19:48", "restic", "renamed", "rowan", 15, 0, 0)
         },
-        edit("2026-09-14T06:03", "aeolus", 14, 788, 77, 20),
-        edit("2026-08-20T06:02", "blackbox", 13, 711, 96, 30),
+        edit("2026-09-14T06:03", "willow", 14, 788, 77, 20),
+        edit("2026-08-20T06:02", "ironbark", 13, 711, 96, 30),
     ]
 }
 
@@ -442,7 +442,7 @@ fn lost_edits() -> Vec<Change> {
         "2026-11-09T05:38",
         "style",
         "edited",
-        "blackbox",
+        "ironbark",
         18,
         12,
         4,
@@ -510,11 +510,11 @@ fn event_json(change: &Change) -> Value {
     })
 }
 
-const RESTIC: &str = r"# Restic backups on apollo
+const RESTIC: &str = r"# Restic backups on laurel
 
 ## Summary
 
-apollo runs restic every night against two repositories. The first lives on the cluster's replicated pool, `tank`, and answers most restores in seconds. The second is offsite, on a borrowed disk at a friend's flat, reached over the tailnet through the rules in [Tailnet ACLs](tailnet-acls.md).
+laurel runs restic every night against two repositories. The first lives on the cluster's replicated pool, `tank`, and answers most restores in seconds. The second is offsite, on a borrowed disk at a friend's flat, reached over the tailnet through the rules in [Tailnet ACLs](tailnet-acls.md).
 
 Nothing here needs a person on a normal night. Whoever writes this page reads the job logs at 06:00 and changes a line only when something changed, so a quiet page means a quiet week. The wiki folder itself is saved by the [autosave service](../meta/autosave.md), not by these jobs.
 
@@ -525,7 +525,7 @@ Nothing here needs a person on a normal night. Whoever writes this page reads th
 | home | 03:00 nightly | 7 daily, 4 weekly, 12 monthly | `tank/restic` |
 | photos | 03:40 nightly | 30 daily, 12 monthly | offsite |
 | wiki | hourly | 48 hourly, 30 daily | `tank/restic` |
-| blackbox | 04:20 nightly | 7 daily, 8 weekly | `tank/restic` |
+| ironbark | 04:20 nightly | 7 daily, 8 weekly | `tank/restic` |
 
 ## Restore a file
 
@@ -550,7 +550,7 @@ Once a month three files are picked at random and restored from each repository.
 
 ## Known issues
 
-1. The offsite job stalls when a node of [apollo](apollo.md) sleeps mid-run. It resumes on its own, but the morning summary reports it as failed.
+1. The offsite job stalls when a node of [laurel](laurel.md) sleeps mid-run. It resumes on its own, but the morning summary reports it as failed.
 2. Restoring in place over a file that the sync client holds open leaves a zero-byte file. Restore to `/tmp` first.
 
 ## Open questions
@@ -559,14 +559,14 @@ Once a month three files are picked at random and restored from each repository.
 
 ## Related
 
-The cluster itself is in [apollo cluster layout](apollo.md), who may reach the backup target is in [Tailnet ACLs](tailnet-acls.md), and the workstation's own exceptions are in [blackbox GPU passthrough notes](blackbox-gpu.md).
+The cluster itself is in [laurel cluster layout](laurel.md), who may reach the backup target is in [Tailnet ACLs](tailnet-acls.md), and the workstation's own exceptions are in [ironbark GPU passthrough notes](ironbark-gpu.md).
 ";
 
-const RESTIC_V20: &str = r"# Restic backups on apollo
+const RESTIC_V20: &str = r"# Restic backups on laurel
 
 ## Summary
 
-apollo runs restic every night against two repositories. The first lives on the cluster's replicated pool, `tank`. The second is offsite, on a borrowed disk at a friend's flat.
+laurel runs restic every night against two repositories. The first lives on the cluster's replicated pool, `tank`. The second is offsite, on a borrowed disk at a friend's flat.
 
 The job logs are read at 07:00 every morning and a line is written here every day, even when nothing changed.
 
@@ -584,7 +584,7 @@ Restore into a scratch folder and copy back by hand.
 
 ## Known issues
 
-1. The offsite job needs a manual restart when a node of apollo sleeps mid-run.
+1. The offsite job needs a manual restart when a node of laurel sleeps mid-run.
 ";
 
 /// The text of a page that only has a summary.
@@ -768,7 +768,7 @@ async fn diff(Path(id): Path<String>) -> Response {
     let added = |parts: &[(&str, bool)]| json!({ "kind": "added", "value": spans(parts) });
     let lines = json!([
         { "kind": "skipped", "value": 4 },
-        same("apollo runs restic every night against two repositories. The first lives on the cluster's replicated pool, `tank`, and answers most restores in seconds."),
+        same("laurel runs restic every night against two repositories. The first lives on the cluster's replicated pool, `tank`, and answers most restores in seconds."),
         same(""),
         removed(&[("Nothing here needs a person on a normal night. Whoever writes this page reads the job logs at ", false), ("07:00", true), (" and ", false), ("writes a line every morning", true), (".", false)]),
         added(&[("Nothing here needs a person on a normal night. Whoever writes this page reads the job logs at ", false), ("06:00", true), (" and ", false), ("changes a line only when something changed, so a quiet page means a quiet week", true), (".", false)]),
@@ -781,8 +781,8 @@ async fn diff(Path(id): Path<String>) -> Response {
         { "kind": "skipped", "value": 9 },
         same("Restoring in place over a file that the sync client holds open leaves a zero-byte file."),
         same(""),
-        removed(&[("The offsite job stalls when a node of apollo sleeps mid-run. It ", false), ("needs a manual restart", true), (".", false)]),
-        added(&[("The offsite job stalls when a node of apollo sleeps mid-run. It ", false), ("resumes on its own, but the morning summary reports it as failed", true), (".", false)]),
+        removed(&[("The offsite job stalls when a node of laurel sleeps mid-run. It ", false), ("needs a manual restart", true), (".", false)]),
+        added(&[("The offsite job stalls when a node of laurel sleeps mid-run. It ", false), ("resumes on its own, but the morning summary reports it as failed", true), (".", false)]),
     ]);
     Json(json!({ "from": commit("restic", 22), "to": commit("restic", 23), "lines": lines }))
         .into_response()
@@ -853,7 +853,7 @@ async fn machines() -> Response {
         "total": 2,
         "machines": [
             {
-                "name": "blackbox",
+                "name": "ironbark",
                 "seen": at("2026-11-11T09:40"),
                 "reported": at("2026-11-11T09:40"),
                 "state": "pushed",
@@ -864,7 +864,7 @@ async fn machines() -> Response {
                 "skipped_more": 0,
             },
             {
-                "name": "aeolus",
+                "name": "willow",
                 "seen": at("2026-11-11T09:38"),
                 "reported": at("2026-11-11T09:38"),
                 "state": "blocked",

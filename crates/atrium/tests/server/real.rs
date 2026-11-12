@@ -19,7 +19,7 @@ use tempfile::TempDir;
 use crate::html::{attrs, rows, texts};
 use crate::support::Atrium;
 
-const TOKEN: &str = "test-token-of-blackbox";
+const TOKEN: &str = "test-token-of-ironbark";
 
 /// Empty configuration for every `git` and `mneme` the test runs. The machine's global
 /// gitignore would otherwise hide files such as `AGENTS.md`.
@@ -59,9 +59,9 @@ fn start_mneme(binary: &str, dir: &Path) -> Mneme {
     };
     let tokens = dir.join("tokens.json");
     let machines = format!(
-        r#"{{ "blackbox": "{}", "aeolus": "{}" }}"#,
+        r#"{{ "ironbark": "{}", "willow": "{}" }}"#,
         hash(TOKEN),
-        hash("test-token-of-aeolus")
+        hash("test-token-of-willow")
     );
     fs::write(&tokens, machines).unwrap();
     let mut command = Command::new(binary);
@@ -270,7 +270,7 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
     assert_eq!(home.status, 200);
     let sentence = texts(&home.body, "p.sentence");
     say("GET / sentence", sentence.clone());
-    assert!(sentence[0].contains("blackbox is blocked"), "{sentence:?}");
+    assert!(sentence[0].contains("ironbark is blocked"), "{sentence:?}");
     say("GET / places", texts(&home.body, ".dock-card .dk-state"));
     assert_eq!(
         attrs(&home.body, ".dock-card", "data-want"),
@@ -388,11 +388,11 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
         ),
     );
     assert_eq!(
-        texts(&machines.body, "#blackbox .why"),
+        texts(&machines.body, "#ironbark .why"),
         ["a merge is in progress"]
     );
     assert_eq!(
-        texts(&machines.body, "#blackbox .skips code"),
+        texts(&machines.body, "#ironbark .skips code"),
         ["notes/scan.pdf"]
     );
 

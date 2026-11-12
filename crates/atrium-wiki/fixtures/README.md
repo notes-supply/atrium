@@ -1,5 +1,5 @@
 # Mneme's example responses
 
-Copied from `tests/fixtures/api/` in Mneme at commit `8f40b541dd5fd2cb4adffdc730662a2d730e64f7`. Mneme's own tests check every real response against these shapes, both ways, so Atrium's stub serves them as they are. `docs/api.md` in Mneme describes each route. `report.json` is the body an autosave service posts to `/git/status`; the test against a real Mneme posts it.
+Copied from `tests/fixtures/api/` in Mneme at commit `8f40b541dd5fd2cb4adffdc730662a2d730e64f7`. Mneme's own tests check every real response against these shapes, both ways, so Atrium's stub serves them as they are, but for the machines' names, which are the demo's: `ironbark` and `willow`. `docs/api.md` in Mneme describes each route. `report.json` is the body an autosave service posts to `/git/status`; the test against a real Mneme posts it.
 
 Copy them again when Mneme's API changes, and note the new commit here.

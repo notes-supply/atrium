@@ -25,7 +25,7 @@ use maud::{Markup, html};
 use crate::mneme::Mneme;
 
 /// The place that holds the record, as the map draws it.
-pub const RECORD: &str = "apollo";
+pub const RECORD: &str = "laurel";
 
 /// The wiki, read from the Mneme at one URL.
 pub struct Wiki {

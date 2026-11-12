@@ -46,13 +46,13 @@ test('swap: Enter swaps the results and focuses the first one', async ({ page })
 });
 
 test('swap: a slow answer to an older query never replaces a newer one', async ({ page }) => {
-  const asked = await watch(page, { delay: (q) => (q === 'apollo' ? 800 : 0) });
+  const asked = await watch(page, { delay: (q) => (q === 'laurel' ? 800 : 0) });
   await open(page, 'search');
-  await page.locator('#q').fill('apollo');
-  await expect.poll(() => asked, 'the older query went out').toEqual(['?q=apollo&sort=relevance']);
+  await page.locator('#q').fill('laurel');
+  await expect.poll(() => asked, 'the older query went out').toEqual(['?q=laurel&sort=relevance']);
   await page.locator('#q').fill('corne');
   await expect(page.locator('[data-count]')).toContainText('corne');
-  await expect.poll(() => page.evaluate(() => performance.getEntriesByType('resource').some((e) => e.name.includes('q=apollo'))), 'the older answer arrived').toBe(true);
+  await expect.poll(() => page.evaluate(() => performance.getEntriesByType('resource').some((e) => e.name.includes('q=laurel'))), 'the older answer arrived').toBe(true);
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   await expect(page.locator('[data-count]')).toContainText('corne');
   await expect(page).toHaveURL(/q=corne&/);

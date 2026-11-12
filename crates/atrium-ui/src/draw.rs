@@ -39,24 +39,24 @@ impl Want {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Place {
     /// The tall machine on the left: a workstation with a folder on top.
-    Blackbox,
+    Ironbark,
     /// The cluster that holds the record.
-    Apollo,
+    Laurel,
     /// The low machine on the right, with a folder.
-    Aeolus,
+    Willow,
 }
 
 impl Place {
     /// The places in the order the map's cards list them.
-    pub const ALL: [Self; 3] = [Self::Blackbox, Self::Apollo, Self::Aeolus];
+    pub const ALL: [Self; 3] = [Self::Ironbark, Self::Laurel, Self::Willow];
 
     /// The name the stylesheet colours it by, in `data-m`.
     #[must_use]
     pub const fn name(self) -> &'static str {
         match self {
-            Self::Blackbox => "blackbox",
-            Self::Apollo => "apollo",
-            Self::Aeolus => "aeolus",
+            Self::Ironbark => "ironbark",
+            Self::Laurel => "laurel",
+            Self::Willow => "willow",
         }
     }
 }
@@ -237,7 +237,7 @@ fn folder(out: &mut Vec<Cuboid>, x: f64, y: f64, z: f64, sheets: u8) {
 fn boxes(place: Place) -> Vec<Cuboid> {
     let mut out = Vec::new();
     match place {
-        Place::Apollo => {
+        Place::Laurel => {
             for i in 0..3 {
                 out.push(cuboid(
                     [5.0, 0.7, f64::from(i) * 0.86],
@@ -257,7 +257,7 @@ fn boxes(place: Place) -> Vec<Cuboid> {
                 vec![mark(Face::Left, 0.1, 0.06, 1.4, 0.2, "mk-spine")],
             ));
         }
-        Place::Blackbox => {
+        Place::Ironbark => {
             let mut marks = vec![mark(Face::Right, 0.2, 1.7, 1.75, 1.82, "mk-strip")];
             for i in 0..5 {
                 let i = f64::from(i);
@@ -274,7 +274,7 @@ fn boxes(place: Place) -> Vec<Cuboid> {
             out.push(cuboid([1.3, 5.4, 0.0], [1.9, 2.0, 2.3], "bb", marks));
             folder(&mut out, 1.75, 5.85, 2.3, 5);
         }
-        Place::Aeolus => {
+        Place::Willow => {
             out.push(cuboid(
                 [9.5, 5.1, 0.0],
                 [2.2, 2.0, 0.9],
@@ -292,12 +292,12 @@ fn boxes(place: Place) -> Vec<Cuboid> {
 
 const TONES: [&str; 6] = ["st", "bb", "ap", "ae", "rc", "pp"];
 
-/// The cable from each machine with a folder to apollo, on the floor.
+/// The cable from each machine with a folder to laurel, on the floor.
 fn cable(place: Place) -> Option<[[f64; 2]; 4]> {
     match place {
-        Place::Blackbox => Some([[3.2, 6.4], [4.4, 6.4], [4.4, 2.6], [5.0, 2.6]]),
-        Place::Aeolus => Some([[9.5, 6.0], [8.6, 6.0], [8.6, 1.9], [7.6, 1.9]]),
-        Place::Apollo => None,
+        Place::Ironbark => Some([[3.2, 6.4], [4.4, 6.4], [4.4, 2.6], [5.0, 2.6]]),
+        Place::Willow => Some([[9.5, 6.0], [8.6, 6.0], [8.6, 1.9], [7.6, 1.9]]),
+        Place::Laurel => None,
     }
 }
 
@@ -476,7 +476,7 @@ pub fn map(want: impl Fn(Place) -> Want, title: &str) -> Markup {
         line([0.0, j, 0.0], [13.0, j, 0.0]);
     }
     groups.push("</g>".to_owned());
-    for place in [Place::Blackbox, Place::Aeolus] {
+    for place in [Place::Ironbark, Place::Willow] {
         let Some(path) = cable(place) else { continue };
         let d = path
             .iter()
@@ -492,7 +492,7 @@ pub fn map(want: impl Fn(Place) -> Want, title: &str) -> Markup {
             want(place).level()
         ));
     }
-    for place in [Place::Apollo, Place::Blackbox, Place::Aeolus] {
+    for place in [Place::Laurel, Place::Ironbark, Place::Willow] {
         let mut group = format!(
             r#"<g class="m" data-m="{}" data-want="{}">"#,
             place.name(),
@@ -504,19 +504,19 @@ pub fn map(want: impl Fn(Place) -> Want, title: &str) -> Markup {
     }
     for (place, from, card, lane) in [
         (
-            Place::Blackbox,
+            Place::Ironbark,
             [2.25, 7.4, 0.9],
             MAP_WIDTH / 6.0,
             height - 34.0,
         ),
         (
-            Place::Apollo,
+            Place::Laurel,
             [6.3, 2.6, 0.4],
             MAP_WIDTH / 2.0,
             height - 24.0,
         ),
         (
-            Place::Aeolus,
+            Place::Willow,
             [10.6, 7.1, 0.45],
             5.0 * MAP_WIDTH / 6.0,
             height - 14.0,

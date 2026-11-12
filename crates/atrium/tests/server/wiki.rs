@@ -63,7 +63,7 @@ async fn home_opens_with_the_sentence_the_map_and_the_tiles() {
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
     let sentence = texts(&home.body, "p.sentence")[0].clone();
-    assert!(sentence.contains("blackbox is blocked"), "{sentence}");
+    assert!(sentence.contains("ironbark is blocked"), "{sentence}");
     assert!(
         sentence.contains("Two questions are waiting for you."),
         "{sentence}"
@@ -82,12 +82,12 @@ async fn home_opens_with_the_sentence_the_map_and_the_tiles() {
     );
     assert_eq!(
         attrs(&home.body, ".map-svg .m", "data-m"),
-        ["apollo", "blackbox", "aeolus"]
+        ["laurel", "ironbark", "willow"]
     );
     assert_eq!(
         attrs(&home.body, ".dock-card", "data-want"),
         ["2", "0", "2"],
-        "blackbox is blocked, aeolus has not been seen"
+        "ironbark is blocked, willow has not been seen"
     );
 }
 
@@ -290,25 +290,25 @@ async fn machines_show_their_state_and_what_they_left_out() {
     assert_eq!(reply.status, 200);
     assert_eq!(
         texts(&reply.body, "section.mach h2"),
-        ["aeolus", "blackbox", "cassia", "apollo"]
+        ["willow", "ironbark", "cassia", "laurel"]
     );
     assert_eq!(
         attrs(&reply.body, "section.mach", "data-want"),
         ["2", "2", "2", "0"]
     );
     assert_eq!(
-        texts(&reply.body, "#blackbox .why"),
+        texts(&reply.body, "#ironbark .why"),
         ["a merge is in progress"]
     );
     assert_eq!(
-        texts(&reply.body, "#blackbox .skips code"),
+        texts(&reply.body, "#ironbark .skips code"),
         ["notes/scan.pdf"]
     );
     assert_eq!(
-        texts(&reply.body, "#blackbox .skips span"),
+        texts(&reply.body, "#ironbark .skips span"),
         ["A file over 10 MiB."]
     );
-    assert_eq!(texts(&reply.body, "#aeolus .word"), ["not reported"]);
+    assert_eq!(texts(&reply.body, "#willow .word"), ["not reported"]);
 }
 
 #[tokio::test]
@@ -476,7 +476,7 @@ async fn the_modules_read_the_page_index_and_previews_as_json() {
         preview["text"]
             .as_str()
             .unwrap()
-            .starts_with("Only apollo may reach")
+            .starts_with("Only laurel may reach")
     );
     let missing = atrium.get("/wiki/preview.json?href=/wiki/nothing.md").await;
     assert_eq!(missing.status, 404);
