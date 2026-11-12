@@ -290,7 +290,8 @@ async fn machines_show_their_state_and_what_they_left_out() {
     assert_eq!(reply.status, 200);
     assert_eq!(
         texts(&reply.body, "section.mach h2"),
-        ["willow", "ironbark", "cassia", "laurel"]
+        ["willow", "ironbark", "cassia", "127.0.0.1"],
+        "the record is named after the host Atrium reaches Mneme at"
     );
     assert_eq!(
         attrs(&reply.body, "section.mach", "data-want"),
@@ -559,4 +560,37 @@ async fn search_results_come_in_the_slots_the_swap_module_replaces() {
     assert_eq!(texts(&reply.body, "[data-swap-target] h2").len(), 1);
     assert_eq!(texts(&reply.body, "[data-count]").len(), 1);
     assert_eq!(texts(&reply.body, "template"), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn the_record_is_called_what_the_owner_names_it_and_only_as_text() {
+    let named = "<i>apollo</i>";
+    let atrium = Atrium::start(
+        Stub::Fixtures,
+        &["--viewer", "owner", "--record-name", named],
+    )
+    .await;
+    let reply = atrium.get("/wiki/machines").await;
+    assert_eq!(reply.status, 200);
+    let page = &reply.body;
+    assert_eq!(texts(page, "#m-laurel"), [named], "the record's section");
+    assert_eq!(texts(page, "#dock-laurel .dk-name"), [named], "its card");
+    assert!(
+        texts(page, ".page-head .sub")[0].contains("<i>apollo</i> holds the record they push to"),
+        "{:?}",
+        texts(page, ".page-head .sub")
+    );
+    assert!(texts(page, "#laurel .why")[0].contains("What Atrium knows of <i>apollo</i> is"));
+    assert!(texts(page, "#map-title")[0].contains("<i>apollo</i> holds the record."));
+    assert!(texts(page, ".foot-note")[0].starts_with("The record on <i>apollo</i>: 5 pages"));
+    assert!(!page.contains("<i>apollo"), "written escaped everywhere");
+    assert!(
+        attrs(page, "[id]", "id")
+            .iter()
+            .chain(&attrs(page, "a[href]", "href"))
+            .all(|value| !value.contains("apollo")),
+        "never an id or an address"
+    );
+    let home = atrium.get("/").await.body;
+    assert_eq!(texts(&home, "#dock-laurel .dk-name"), [named], "home's map");
 }

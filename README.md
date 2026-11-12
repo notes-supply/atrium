@@ -33,7 +33,7 @@ atrium --wiki-folder ~/wiki
 
 Then open http://localhost:8080. Atrium starts `mneme serve --folder ~/wiki` as its own child process, reads the wiki through it and stops it when it stops. Mneme follows the folder's `main`, so a new commit shows within seconds. Atrium runs `mneme` from `PATH`, or the binary `--mneme-bin` names, and stops with an error if Mneme does, so that a supervisor can start both again.
 
-Every page shows the whole wiki and there is no login, so with `--wiki-folder` Atrium listens on loopback only, `127.0.0.1:8080` by default, and refuses any other `--addr`. The viewer is `owner`.
+Every page shows the whole wiki and there is no login, so with `--wiki-folder` Atrium listens on loopback only, `127.0.0.1:8080` by default, and refuses any other `--addr`. The viewer is `owner`, and the pages call the record by this machine's short host name, since the folder is the record here; `--record-name` names it otherwise.
 
 To keep it running, `contrib/atrium.service` is a systemd user unit for `~/wiki` with both binaries in `~/.local/bin`:
 
@@ -72,6 +72,7 @@ cargo run -- --viewer owner --mneme-url http://127.0.0.1:8081
 | `--mneme-url` | `ATRIUM_MNEME_URL` | Mneme's base URL. Required without `--wiki-folder` or `--demo`. |
 | `--wiki-folder` | `ATRIUM_WIKI_FOLDER` | A wiki folder on this machine, read through a `mneme serve --folder` that Atrium starts. Needs a loopback `--addr`, and makes `owner` the default viewer. |
 | `--mneme-bin` | `ATRIUM_MNEME_BIN` | The Mneme that `--wiki-folder` starts. `mneme` on `PATH` by default. |
+| `--record-name` | `ATRIUM_RECORD_NAME` | What the footer, the map and the machines page call the place that holds the wiki's record. The host of `--mneme-url` by default, this machine's short host name with `--wiki-folder`, and `laurel` in the demo. |
 | `--mneme-timeout-ms` | `ATRIUM_MNEME_TIMEOUT_MS` | How long one call to Mneme may take. 3000 by default. Home waits at most 500 ms. |
 | `--time-zone` | `ATRIUM_TIME_ZONE` | The reader's time zone, for every time shown and the light of the hour. The system's by default, from `TZ` or `/etc/localtime`, or UTC when it names none. The demo's is `Europe/Stockholm`. |
 | `--demo` | | Serve the invented wiki instead of a Mneme, `--mneme-url` not needed. |
@@ -106,7 +107,7 @@ A push to `main` publishes a release once the gate passes on that commit. CI's r
 ^https://github\.com/notes-supply/atrium/\.github/workflows/release\.yml@refs/heads/main$
 ```
 
-Such a cluster adds its own specifics as an overlay: the host name in `ATRIUM_ALLOWED_HOSTS`, the time zone in `ATRIUM_TIME_ZONE`, and the Services, Ingress, network policy and secrets around the pods. The project's own cluster does that in its own repository. It also checks every pod a release creates in namespace `atrium` and refuses it if it:
+Such a cluster adds its own specifics as an overlay: the host name in `ATRIUM_ALLOWED_HOSTS`, the time zone in `ATRIUM_TIME_ZONE`, the name of the server that holds the record in `ATRIUM_RECORD_NAME`, and the Services, Ingress, network policy and secrets around the pods. The project's own cluster does that in its own repository. It also checks every pod a release creates in namespace `atrium` and refuses it if it:
 
 - runs as a service account other than `default`;
 - mounts a service account token (keep `automountServiceAccountToken: false`);

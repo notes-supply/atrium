@@ -11,10 +11,11 @@ cat >.env <<EOF
 MNEME_COMMIT=$(git ls-remote https://github.com/notes-supply/mneme refs/heads/main | cut -f1)
 ATRIUM_COMMIT=$(git ls-remote https://github.com/notes-supply/atrium refs/heads/main | cut -f1)
 ATRIUM_TIME_ZONE=Europe/Stockholm
+ATRIUM_RECORD_NAME=$(hostname -s)
 EOF
 ```
 
-`ATRIUM_TIME_ZONE` is the zone the pages show times in, UTC when it is left out.
+`ATRIUM_TIME_ZONE` is the zone the pages show times in, UTC when it is left out. `ATRIUM_RECORD_NAME` is what Atrium's footer, map and machines page call this server, which holds the record; `mneme`, the host Atrium reaches it at, when it is left out.
 
 ## Make the tokens
 

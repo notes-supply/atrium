@@ -21,7 +21,7 @@ const GRACE: Duration = Duration::from_millis(100);
 /// Every feature, in the order the navigation lists them.
 pub fn registry(config: &Config, mneme_url: &str) -> Result<Vec<Arc<dyn Feature>>> {
     let timeout = Duration::from_millis(config.mneme_timeout_ms);
-    let wiki = Wiki::new(mneme_url, timeout)?;
+    let wiki = Wiki::new(mneme_url, timeout, &config.record())?;
     if config.demo == Some(Demo::Away) {
         wiki.mneme().heard_at(atrium_wiki::demo::LAST_HEARD);
     }

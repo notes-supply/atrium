@@ -17,6 +17,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result, bail};
 use atrium_core::Viewer;
 use atrium_ui::{Chrome, Footnote, Shell};
+use axum::http::Uri;
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
@@ -80,6 +81,11 @@ pub struct Config {
         default_value = "mneme"
     )]
     pub mneme_bin: PathBuf,
+    /// The name the pages give the place that holds the wiki's record, such as the server
+    /// Mneme runs on. By default the host of `--mneme-url`, this machine's short host name
+    /// with `--wiki-folder`, and the demo's own in the demo.
+    #[arg(long, env = "ATRIUM_RECORD_NAME", value_name = "NAME", value_parser = record_name)]
+    pub record_name: Option<String>,
     /// How long one call to Mneme may take, in milliseconds.
     #[arg(long, env = "ATRIUM_MNEME_TIMEOUT_MS", default_value_t = 3000)]
     pub mneme_timeout_ms: u64,
@@ -103,11 +109,41 @@ pub enum Demo {
     Away,
 }
 
+fn record_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err("the record's name is empty".to_owned())
+    } else {
+        Ok(name.to_owned())
+    }
+}
+
 fn zone(name: &str) -> Result<TimeZone, String> {
     TimeZone::get(name).map_err(|error| format!("{name}: {error}"))
 }
 
 impl Config {
+    /// The name the pages give the place that holds the record: the one named, or the
+    /// demo's, or this machine's for a wiki folder, whose clone is the record, or the host
+    /// that `--mneme-url` names.
+    #[must_use]
+    pub fn record(&self) -> String {
+        if let Some(name) = &self.record_name {
+            return name.clone();
+        }
+        if self.demo.is_some() {
+            return atrium_wiki::demo::RECORD.to_owned();
+        }
+        if self.wiki_folder.is_some() {
+            return local::host_name();
+        }
+        self.mneme_url
+            .as_deref()
+            .and_then(|url| url.parse::<Uri>().ok())
+            .and_then(|url| url.host().map(str::to_owned))
+            .unwrap_or_else(|| "Mneme".to_owned())
+    }
+
     /// The reader's time zone: the one named, or the demo's, whose clock is set in it, or the
     /// system's, or UTC when the system names none.
     #[must_use]
@@ -298,6 +334,35 @@ mod tests {
             "a.example,b",
         ]);
         assert_eq!(named.allowed_hosts, ["a.example", "b"]);
+    }
+
+    #[test]
+    fn the_record_is_named_after_where_it_is_unless_another_name_is_given() {
+        let record = |args: &[&str]| parse(args).record();
+        assert_eq!(record(&["--demo"]), "laurel");
+        assert_eq!(record(&["--mneme-url", "http://mneme:8080"]), "mneme");
+        assert_eq!(
+            record(&["--mneme-url", "https://wiki.example.org/base/"]),
+            "wiki.example.org"
+        );
+        assert_eq!(record(&["--wiki-folder", "/wiki"]), local::host_name());
+        for args in [
+            &["--demo"][..],
+            &["--mneme-url", "http://mneme:8080"],
+            &["--wiki-folder", "/wiki"],
+        ] {
+            let named = [args, &["--record-name", "apollo"]].concat();
+            assert_eq!(record(&named), "apollo", "{args:?}");
+        }
+        let blank = [
+            "atrium",
+            "--viewer",
+            "owner",
+            "--demo",
+            "--record-name",
+            " ",
+        ];
+        assert!(Config::try_parse_from(blank).is_err());
     }
 
     #[test]

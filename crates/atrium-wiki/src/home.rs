@@ -240,7 +240,7 @@ fn away_note(retry: &str) -> Markup {
 }
 
 /// The wiki's part of home when Mneme does not answer at all.
-fn away(local: &Local, heard: Option<i64>, retry: &str) -> HomeOffer {
+fn away(local: &Local, heard: Option<i64>, retry: &str, record: &str) -> HomeOffer {
     HomeOffer {
         said: vec![html! {
             "The wiki is out of reach just now. "
@@ -250,7 +250,12 @@ fn away(local: &Local, heard: Option<i64>, retry: &str) -> HomeOffer {
             }
             " and will try again when you load a page."
         }],
-        figure: Some(map_figure(local, &Known::Away { heard }, "The wiki")),
+        figure: Some(map_figure(
+            local,
+            &Known::Away { heard },
+            "The wiki",
+            record,
+        )),
         tiles: vec![away_note(retry), resume_slot()],
         away: true,
     }
@@ -260,7 +265,7 @@ fn away(local: &Local, heard: Option<i64>, retry: &str) -> HomeOffer {
 /// wiki is away, with a 503.
 #[must_use]
 pub fn away_page(shell: &Shell, mneme: &Mneme) -> Page {
-    let offer = away(shell.local(), mneme.heard(), shell.path());
+    let offer = away(shell.local(), mneme.heard(), shell.path(), mneme.record());
     atrium_ui::home(shell, &[("Wiki", offer)])
 }
 
@@ -360,7 +365,7 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
     .iter()
     .all(|failed| *failed);
     if all_away {
-        return away(local, mneme.heard(), "/");
+        return away(local, mneme.heard(), "/", mneme.record());
     }
     let losers = match &recent {
         Ok(recent) => losers(mneme, &recent.events).await,
@@ -391,7 +396,7 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
             heard: mneme.heard(),
         },
     };
-    let figure = map_figure(local, &known, "The wiki");
+    let figure = map_figure(local, &known, "The wiki", mneme.record());
     let no_titles = HashMap::new();
     let mut shown = vec![match &recent {
         Ok(recent) => changes_tile(

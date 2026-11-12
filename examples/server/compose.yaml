@@ -3,7 +3,8 @@
 # and README.md says how to reach them over a tailnet with `tailscale serve`.
 #
 # The images are published for every commit of main, tagged with the commit. Name the two
-# commits, and the allowed host names, in a .env file beside this one.
+# commits, and the allowed host names, the time zone and the record's name, in a .env file
+# beside this one.
 
 services:
   mneme:
@@ -32,6 +33,7 @@ services:
       ATRIUM_MNEME_URL: http://mneme:8080
       ATRIUM_ALLOWED_HOSTS: ${ATRIUM_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
       ATRIUM_TIME_ZONE: ${ATRIUM_TIME_ZONE:-UTC}
+      ATRIUM_RECORD_NAME: ${ATRIUM_RECORD_NAME:-mneme}
     depends_on: [mneme]
     ports:
       - 127.0.0.1:8080:8080

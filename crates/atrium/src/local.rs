@@ -143,6 +143,21 @@ impl Mneme {
     }
 }
 
+/// This machine's short host name, as Mneme names a machine by default, or `localhost`
+/// when it has none.
+pub fn host_name() -> String {
+    ["/proc/sys/kernel/hostname", "/etc/hostname"]
+        .iter()
+        .find_map(|file| short_name(&std::fs::read_to_string(file).ok()?))
+        .unwrap_or_else(|| "localhost".to_owned())
+}
+
+/// A host name up to its first dot.
+fn short_name(name: &str) -> Option<String> {
+    let short = name.trim().split('.').next()?.trim();
+    (!short.is_empty()).then(|| short.to_owned())
+}
+
 /// Why a binary did not start. A missing one says how to get Mneme.
 fn not_started(binary: &Path, error: &std::io::Error) -> anyhow::Error {
     if error.kind() != ErrorKind::NotFound {
@@ -201,6 +216,19 @@ mod tests {
         );
         assert_eq!(listening(r#"{"event":"index","addr":"127.0.0.1:1"}"#), None);
         assert_eq!(listening("listening on 127.0.0.1:1"), None);
+    }
+
+    #[test]
+    fn a_host_name_is_cut_at_its_first_dot() {
+        assert_eq!(
+            short_name("laptop.example.lan\n").as_deref(),
+            Some("laptop")
+        );
+        assert_eq!(short_name("laptop").as_deref(), Some("laptop"));
+        assert_eq!(short_name(" \n"), None);
+        assert_eq!(short_name(".lan"), None);
+        let here = host_name();
+        assert!(!here.is_empty() && !here.contains('.'), "{here}");
     }
 
     #[test]

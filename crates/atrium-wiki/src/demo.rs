@@ -19,6 +19,9 @@ use serde_json::{Value, json};
 
 use crate::stub::{self, Stub};
 
+/// The name of the demo's record: its cluster, which its pages write about.
+pub const RECORD: &str = "laurel";
+
 /// The demo's time zone, which its clock and every time in its content are written in.
 pub const ZONE: &str = "Europe/Stockholm";
 

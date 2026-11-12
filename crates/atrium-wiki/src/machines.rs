@@ -12,7 +12,6 @@ use axum::extract::State;
 use axum::response::Response;
 use maud::{Markup, html};
 
-use crate::RECORD;
 use crate::mneme::{Machine, Mneme, Skipped, Status};
 use crate::routes::{Failure, respond};
 
@@ -261,7 +260,7 @@ fn names(list: &[&str]) -> String {
 }
 
 /// What a screen reader hears for the map.
-fn map_title(copies: &[Copy]) -> String {
+fn map_title(copies: &[Copy], record: &str) -> String {
     let held: Vec<&str> = copies.iter().map(|copy| copy.name.as_str()).collect();
     let holds = if held.len() == 1 {
         "holds a folder"
@@ -269,7 +268,7 @@ fn map_title(copies: &[Copy]) -> String {
         "each hold a folder"
     };
     let mut title = format!(
-        "The map of the wiki: {} {holds}, {RECORD} holds the record.",
+        "The map of the wiki: {} {holds}, {record} holds the record.",
         names(&held)
     );
     let needs: Vec<&str> = copies
@@ -347,11 +346,12 @@ fn dock_card(local: &Local, place: Place, copy: Option<&Copy>, known: &Known<'_>
     }
 }
 
-fn record_card(local: &Local, known: &Known<'_>) -> Markup {
+/// The record's card. Its id and address are the drawing's, since `record` is the owner's text.
+fn record_card(local: &Local, known: &Known<'_>, record: &str) -> Markup {
     html! {
         a.dock-card.surface #dock-laurel data-m="laurel" data-want="0" href="/wiki/machines#laurel" data-surface {
             (draw::place(Place::Laurel, Want::Rest, "vignette"))
-            span.dk-head { span.dk-tone aria-hidden="true" {} span.dk-name { (RECORD) } span.dk-role { "the record" } }
+            span.dk-head { span.dk-tone aria-hidden="true" {} span.dk-name { (record) } span.dk-role { "the record" } }
             @match known {
                 Known::Known { record: Some(status), .. } => {
                     span.dk-state { (mark(Mark::Want(Want::Rest))) "holding" }
@@ -374,9 +374,10 @@ fn record_card(local: &Local, known: &Known<'_>) -> Markup {
     }
 }
 
-/// The map of the wiki and a card per place below it.
+/// The map of the wiki and a card per place below it, with `record` the name of the place
+/// that holds the record.
 #[must_use]
-pub fn map_figure(local: &Local, known: &Known<'_>, heading: &str) -> Markup {
+pub fn map_figure(local: &Local, known: &Known<'_>, heading: &str, record: &str) -> Markup {
     let none: [Copy; 0] = [];
     let copies = match known {
         Known::Known { copies, .. } => *copies,
@@ -394,7 +395,7 @@ pub fn map_figure(local: &Local, known: &Known<'_>, heading: &str) -> Markup {
     let title = if away {
         "The map of the wiki, with nothing known: the wiki is out of reach.".to_owned()
     } else {
-        map_title(copies)
+        map_title(copies, record)
     };
     let card = |place: Place| {
         let copy = placed
@@ -409,7 +410,7 @@ pub fn map_figure(local: &Local, known: &Known<'_>, heading: &str) -> Markup {
             div.map-stage { (draw::map(want, &title)) }
             ul.docks aria-label="Places" {
                 li { (card(Place::Ironbark)) }
-                li { (record_card(local, known)) }
+                li { (record_card(local, known, record)) }
                 li { (card(Place::Willow)) }
             }
         }
@@ -477,25 +478,26 @@ async fn machines(shell: &Shell, mneme: &Mneme) -> Result<Page, Failure> {
         record: Some(&status),
     };
     let held = u64::try_from(copies.len()).unwrap_or(0);
+    let record = mneme.record();
     let body = html! {
         main #(MAIN) .machines {
             header.page-head {
                 h1 { "Machines" }
                 p.sub {
                     (cap(&count(held, "machine", "machines"))) (if held == 1 { " holds" } else { " hold" })
-                    " a folder of the wiki and save it on their own. " (RECORD)
+                    " a folder of the wiki and save it on their own. " (record)
                     " holds the record they push to. A place is drawn in full when it needs you."
                 }
             }
-            (map_figure(local, &known, "The map"))
+            (map_figure(local, &known, "The map", record))
             (legend())
             @for copy in &copies { (machine_section(local, copy, place_of(&copies, &copy.name))) }
             section.mach.surface #laurel data-surface data-want="0" aria-labelledby="m-laurel" {
-                header.mach-head { h2 #m-laurel { (RECORD) } span.dk-role { "the record" } }
+                header.mach-head { h2 #m-laurel { (record) } span.dk-role { "the record" } }
                 (draw::place(Place::Laurel, Want::Rest, "vignette"))
                 div.mach-state {
                     p.word { (mark(Mark::Want(Want::Rest))) "holding" }
-                    p.why { "Every machine pushes here. What Atrium knows of " (RECORD) " is the wiki's own status." }
+                    p.why { "Every machine pushes here. What Atrium knows of " (record) " is the wiki's own status." }
                 }
                 dl.facts {
                     div { dt { "Pages" } dd { (number(status.pages)) } }
