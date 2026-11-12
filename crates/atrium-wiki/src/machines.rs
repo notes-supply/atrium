@@ -346,7 +346,7 @@ fn dock_card(local: &Local, place: Place, copy: Option<&Copy>, known: &Known<'_>
     }
 }
 
-/// The record's card. Its id and address are the drawing's, since `record` is the owner's text.
+/// The record's card. Its id and address are the drawing's, since `record` is a setting's text.
 fn record_card(local: &Local, known: &Known<'_>, record: &str) -> Markup {
     html! {
         a.dock-card.surface #dock-laurel data-m="laurel" data-want="0" href="/wiki/machines#laurel" data-surface {

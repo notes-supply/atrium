@@ -77,7 +77,7 @@ fn text_of<'a>(node: &'a AstNode<'a>) -> String {
 }
 
 /// Whether a list is the one under a heading named "Open questions", which holds the
-/// questions the wiki leaves for its owner.
+/// questions the wiki leaves for its readers.
 fn open_questions<'a>(list: &'a AstNode<'a>) -> bool {
     let bullets =
         matches!(&list.data().value, NodeValue::List(list) if list.list_type == ListType::Bullet);

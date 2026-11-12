@@ -64,7 +64,7 @@ async fn crawl(atrium: &Atrium) -> BTreeMap<String, u16> {
 
 #[tokio::test]
 async fn every_page_keeps_the_output_rules() {
-    let atrium = Atrium::owner().await;
+    let atrium = Atrium::member().await;
     let found = crawl(&atrium).await;
     for nav in attrs(&atrium.get("/").await.body, "header nav a", "href") {
         assert_eq!(found.get(&nav), Some(&200), "{nav} was reached");
@@ -79,7 +79,7 @@ async fn every_page_keeps_the_output_rules() {
 
 #[tokio::test]
 async fn assets_have_hashed_names_and_are_immutable() {
-    let atrium = Atrium::owner().await;
+    let atrium = Atrium::member().await;
     let home = atrium.get("/").await.body;
     let stylesheet = &attrs(&home, "link[rel=stylesheet]", "href")[0];
     let name = stylesheet.strip_prefix("/assets/").unwrap();
@@ -103,14 +103,24 @@ async fn assets_have_hashed_names_and_are_immutable() {
 
 #[tokio::test]
 async fn a_page_answers_if_none_match() {
-    let atrium = Atrium::owner().await;
-    let first = atrium.get("/").await;
-    let tag = first.header("etag").unwrap();
+    let atrium = Atrium::member().await;
+    let mut tag = atrium.get("/").await.header("etag").unwrap().to_owned();
     assert!(
         tag.starts_with('"') && tag.len() == 34,
         "a strong tag: {tag}"
     );
-    let again = atrium.get_with("/", &[("if-none-match", tag)]).await;
+    // Home tells the time, so a minute that turns between two requests changes the page and
+    // its tag. Then the answer is the new page, and the next request asks with its tag.
+    let mut again = atrium.get_with("/", &[("if-none-match", &tag)]).await;
+    for _ in 0..2 {
+        if again.status == 304 {
+            break;
+        }
+        let changed = again.header("etag").unwrap().to_owned();
+        assert_ne!(changed, tag, "the same page answered 200: {}", again.status);
+        tag = changed;
+        again = atrium.get_with("/", &[("if-none-match", &tag)]).await;
+    }
     assert_eq!(again.status, 304);
     assert_eq!(again.body, "");
     let other = atrium.get_with("/", &[("if-none-match", "\"x\"")]).await;
@@ -119,7 +129,7 @@ async fn a_page_answers_if_none_match() {
 
 #[tokio::test]
 async fn an_unknown_host_is_refused_except_for_health_checks() {
-    let atrium = Atrium::owner().await;
+    let atrium = Atrium::member().await;
     let refused = atrium.get_with("/", &[("host", "evil.example")]).await;
     assert_eq!(refused.status, 421);
     let missing = atrium
@@ -134,7 +144,7 @@ async fn an_unknown_host_is_refused_except_for_health_checks() {
 
 #[tokio::test]
 async fn the_modules_load_through_one_loader_of_at_most_a_kilobyte() {
-    let atrium = Atrium::owner().await;
+    let atrium = Atrium::member().await;
     let home = atrium.get("/").await.body;
     let loader = &attrs(&home, "script", "src")[0];
     let reply = atrium.get(loader).await;
@@ -171,7 +181,7 @@ async fn the_modules_load_through_one_loader_of_at_most_a_kilobyte() {
 
 #[tokio::test]
 async fn every_section_is_a_plain_link_with_its_key() {
-    let atrium = Atrium::owner().await;
+    let atrium = Atrium::member().await;
     let home = atrium.get("/").await.body;
     assert_eq!(
         attrs(&home, ".mast .index a", "href"),

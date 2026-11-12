@@ -26,9 +26,9 @@ impl Reply {
 }
 
 impl Atrium {
-    /// A listener for the owner in front of Mneme's example responses.
-    pub async fn owner() -> Self {
-        Self::start(Stub::Fixtures, &["--viewer", "owner"]).await
+    /// A listener for members in front of Mneme's example responses.
+    pub async fn member() -> Self {
+        Self::start(Stub::Fixtures, &["--viewer", "member"]).await
     }
 
     /// A listener with `args` added to the flags, in front of `mneme`.

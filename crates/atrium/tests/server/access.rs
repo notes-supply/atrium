@@ -1,4 +1,4 @@
-//! A listener serves one kind of viewer, and private features exist only for the owner.
+//! A listener serves one kind of viewer, and private features exist only for members.
 
 use atrium_wiki::stub::Stub;
 
@@ -27,8 +27,8 @@ async fn an_anonymous_listener_links_no_private_feature() {
 }
 
 #[tokio::test]
-async fn the_owners_listener_serves_home_and_links_it() {
-    let atrium = Atrium::owner().await;
+async fn a_members_listener_serves_home_and_links_it() {
+    let atrium = Atrium::member().await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
     assert_eq!(
@@ -56,7 +56,7 @@ async fn the_viewer_must_be_named() {
     let tailnet = parse(&["--viewer", "tailnet"]).unwrap();
     assert_eq!(
         tailnet.viewer,
-        atrium_core::Viewer::Owner,
+        atrium_core::Viewer::Member,
         "the name a deployment passes"
     );
 }

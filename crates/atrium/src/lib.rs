@@ -1,4 +1,4 @@
-//! Atrium, a private homepage and dashboard. The binary in `main.rs` parses [`Config`] and
+//! Atrium, a shared homepage and dashboard for a team. The binary in `main.rs` parses [`Config`] and
 //! calls [`run`]; the tests build the same router with [`app`].
 
 mod assets;
@@ -40,15 +40,15 @@ pub struct Config {
     /// The address to listen on. Loopback only by default; the image sets `0.0.0.0:8080`.
     #[arg(long, env = "ATRIUM_ADDR", default_value = "127.0.0.1:8080")]
     pub addr: SocketAddr,
-    /// Who reaches this listener: `owner`, the person this Atrium belongs to, sees private
-    /// features, and `anonymous` only public ones. `tailnet` is another name for `owner`.
-    /// `owner` by default with `--wiki-folder`.
+    /// Who reaches this listener: a `member`, such as anyone on the team's tailnet, sees
+    /// private features, and `anonymous` only public ones. `tailnet` and `owner` are other
+    /// names for `member`. `member` by default with `--wiki-folder`.
     #[arg(
         long,
         env = "ATRIUM_VIEWER",
         required = false,
         required_unless_present = "wiki_folder",
-        default_value_if("wiki_folder", ArgPredicate::IsPresent, "owner")
+        default_value_if("wiki_folder", ArgPredicate::IsPresent, "member")
     )]
     pub viewer: Viewer,
     /// The host names requests may name, separated by commas, each with any port. An IPv6
@@ -319,7 +319,7 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Config {
-        Config::try_parse_from([&["atrium", "--viewer", "owner"], args].concat()).unwrap()
+        Config::try_parse_from([&["atrium", "--viewer", "member"], args].concat()).unwrap()
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod tests {
         let blank = [
             "atrium",
             "--viewer",
-            "owner",
+            "member",
             "--demo",
             "--record-name",
             " ",

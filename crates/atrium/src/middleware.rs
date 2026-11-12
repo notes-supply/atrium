@@ -210,8 +210,11 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_private_route_answers_the_owner() {
-        assert_eq!(status(Access::Private, Viewer::Owner).await, StatusCode::OK);
+    async fn a_private_route_answers_a_member() {
+        assert_eq!(
+            status(Access::Private, Viewer::Member).await,
+            StatusCode::OK
+        );
     }
 
     #[tokio::test]

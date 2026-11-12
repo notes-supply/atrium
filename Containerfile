@@ -19,5 +19,5 @@ USER 65532:65532
 # A container's port is published from its own network, so the image listens on every
 # address of it. The binary alone listens on loopback.
 ENV ATRIUM_ADDR=0.0.0.0:8080
-LABEL org.opencontainers.image.description="Atrium, a private homepage and dashboard"
+LABEL org.opencontainers.image.description="Atrium, a shared homepage and dashboard for a team"
 ENTRYPOINT ["/usr/local/bin/atrium"]

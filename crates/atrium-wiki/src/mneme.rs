@@ -340,7 +340,7 @@ pub struct PathMatch {
     pub current: bool,
 }
 
-/// The questions the wiki leaves for its owner: the items under a heading named "Open
+/// The questions the wiki leaves for its readers: the items under a heading named "Open
 /// questions" on any page.
 #[derive(Debug, Deserialize)]
 pub struct Questions {
@@ -589,8 +589,8 @@ impl Mneme {
         }
     }
 
-    /// The name the pages give the place that holds the record. It is text the owner
-    /// chose, so it is only ever written escaped, never into an id or an address.
+    /// The name the pages give the place that holds the record. It is text whoever runs
+    /// Atrium chose, so it is only ever written escaped, never into an id or an address.
     #[must_use]
     pub fn record(&self) -> &str {
         &self.record

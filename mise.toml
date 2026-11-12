@@ -15,6 +15,8 @@ rust = { version = "nightly-2026-10-28", profile = "minimal", components = "rust
 "aqua:fluxcd/flux2" = "2.8.2"
 "aqua:sigstore/cosign" = "3.1.4"
 "aqua:kubernetes/kubectl" = "1.36.3"
+# The binaries workflow tags a release's image with crane.
+"aqua:google/go-containerregistry" = "0.22.1"
 # The Wasm pipeline (mise run build:wasm). The CLI's version must equal the wasm-bindgen crate's.
 "github:wasm-bindgen/wasm-bindgen" = "0.2.129"
 "aqua:WebAssembly/binaryen" = "133"
@@ -22,12 +24,12 @@ rust = { version = "nightly-2026-10-28", profile = "minimal", components = "rust
 [tasks.demo]
 description = "Run Atrium on 127.0.0.1:8080 with the design's invented wiki, no Mneme needed"
 depends = ["build:wasm"]
-run = "cargo run -- --demo --viewer owner"
+run = "cargo run -- --demo --viewer member"
 
 [tasks.dev]
-description = "Run Atrium for the owner on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
+description = "Run Atrium for a member on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
 depends = ["build:wasm"]
-run = "cargo run -- --viewer owner --mneme-url ${ATRIUM_MNEME_URL:-http://127.0.0.1:8081}"
+run = "cargo run -- --viewer member --mneme-url ${ATRIUM_MNEME_URL:-http://127.0.0.1:8081}"
 
 [tasks.fmt]
 description = "Format the Rust sources"
@@ -158,6 +160,11 @@ tools/browser.sh node tools/check/parity.mjs
 description = "Record a short visit to atrium --demo and screenshot home, a page and the machines at 1440 and 390 px, day and night, into target/check/final (needs Docker)"
 depends = ["build:wasm"]
 run = "tools/browser.sh node tools/check/capture.mjs"
+
+[tasks.screenshots]
+description = "Screenshot atrium --demo for the README and docs/screenshots.md into docs/images: home in day and night, a page, a diff and the machines, at 1440 by 900 under reduced motion (needs Docker)"
+depends = ["build:wasm"]
+run = "tools/browser.sh node tools/screenshots.mjs"
 
 [tasks.axe]
 description = "Run axe on each route of atrium --demo at 1440 and 390 px, day and night, scripts on and off (needs Docker)"
