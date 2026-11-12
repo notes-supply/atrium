@@ -49,9 +49,11 @@ The loader starts the field bundle when the page has `data-module="field"`, and 
 | `carry` | `<body>` | `a[data-carry]` on titles, `.doc-title` on a page's heading. |
 | `clock` | `time.clock` | nothing more. |
 | `greet` | the greeting's `<span>` | nothing more. |
-| `light` | `<body>` | `data-hour` on `<html>`. |
+| `light` | `<body>` | `data-hour` on `<html>`, and in the stylesheet each hour's `--sun` and `--warm` and the ease's length, `--hour-ease`. |
 
 The clock, the greeting and the light follow the visitor's own clock. The server writes them for its `--time-zone`, so the two agree, and nothing changes as the modules start, whenever the visitor is in that zone.
+
+The light eases to a new hour, as a page opens on another hour than the server's or when the hour turns, over `--hour-ease`, forty minutes, in steps. Every thirty seconds `light` sets `--sun` and `--warm` on `<html>`, a step that moves no colour channel by more than one level of 255, and once the ease is over it takes them off, so the hour's own rule holds. Between steps the page does no work. Each hour's numbers are read back from the stylesheet, which stays the only place they are written. Under reduced motion the light takes the new hour at once, and a page asked for one hour with `?hour` keeps the hour it was written in. `light` tells the field to read its colours again when the hour turns, every two minutes of the ease and when it ends.
 
 The preferences are cookies the server reads on the next request: `atrium-intensity` (`calm`, `normal`, `lively`), `atrium-theme` (`light`, `dark`) and `atrium-keys` (`on`, `off`). The server writes each as `data-intensity`, `data-theme` and `data-keys` on `<html>`.
 

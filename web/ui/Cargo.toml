@@ -13,6 +13,7 @@ wasm-bindgen.workspace = true
 web-sys = { workspace = true, features = [
   "console",
   "css",
+  "CssStyleDeclaration",
   "CustomEvent",
   "CustomEventInit",
   "Document",
