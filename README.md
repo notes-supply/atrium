@@ -79,3 +79,9 @@ The gate builds the Wasm bundles and holds them to their size budgets, checks fo
 These run in Playwright's image through `tools/browser.sh`, which needs Docker and three free ports from `PORT` (18760 by default), and installs Playwright 1.64.1 and axe from `package-lock.json` with `npm ci` in the image.
 
 `mise run image` builds the container image, answers home and serves the bundles with it, and scans it with Trivy when Trivy is installed. Nothing is pushed.
+
+## License
+
+Atrium is licensed under either of the [Apache License, Version 2.0](LICENSE-APACHE) or the [MIT license](LICENSE-MIT), at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Atrium by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
