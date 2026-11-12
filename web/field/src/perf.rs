@@ -64,7 +64,7 @@ pub fn mount(document: &Document, field: Option<&Shared>) -> Result<(), JsValue>
     if let Some(field) = field {
         let field = field.borrow();
         state.mode = field.mode().name();
-        state.size = field.size();
+        state.size = field.css;
     }
     state.paint();
     Ok(())

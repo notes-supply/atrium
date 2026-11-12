@@ -39,12 +39,13 @@ void main(){
 }";
 
 /// Pass two: the lattice. Each pixel finds its cell at 24, 12 or 6 px by the focus there,
-/// and the cell's Bayer threshold decides its dot.
+/// and the cell's Bayer threshold decides its dot. `u_scale` is CSS pixels per canvas
+/// pixel: 1 draws the prototype's pixels, 2 one of every four, each dot then 2 px.
 pub const LATTICE_FS: &str = "#version 300 es
 precision highp float;
 out vec4 o;
 uniform vec2 u_res;
-uniform float u_breath, u_reveal, u_drift;
+uniform float u_breath, u_reveal, u_drift, u_scale;
 uniform vec3 u_bg, u_dot, u_warm, u_hot;
 uniform sampler2D u_focus;
 float b2(vec2 a){ a = floor(a); return fract(dot(a, vec2(.5, a.y * .75))); }
@@ -56,7 +57,7 @@ vec4 focusAt(vec2 g){
   return texelFetch(u_focus, t, 0);
 }
 void main(){
-  vec2 q = vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y);
+  vec2 q = vec2(gl_FragCoord.x, u_res.y - gl_FragCoord.y) * u_scale;
   vec2 g = floor(q + vec2(0., u_drift));
   float P = 24., lvl = 0.;
   vec2 c = floor(g / P);

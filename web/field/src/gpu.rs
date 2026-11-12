@@ -58,6 +58,7 @@ struct LatticeUniforms {
     breath: Option<WebGlUniformLocation>,
     reveal: Option<WebGlUniformLocation>,
     drift: Option<WebGlUniformLocation>,
+    scale: Option<WebGlUniformLocation>,
     bg: Option<WebGlUniformLocation>,
     dot: Option<WebGlUniformLocation>,
     warm: Option<WebGlUniformLocation>,
@@ -73,8 +74,10 @@ pub struct Gpu {
     lattice: LatticeUniforms,
     texture: WebGlTexture,
     framebuffer: WebGlFramebuffer,
+    /// The canvas's size in its own pixels, and CSS pixels per canvas pixel.
     size: (i32, i32),
-    /// The focus texture's size: one texel per 6 px cell, and a margin for the drift.
+    scale: i32,
+    /// The focus texture's size: one texel per 6 CSS px cell, and a margin for the drift.
     cells: (i32, i32),
 }
 
@@ -146,6 +149,7 @@ impl Gpu {
             breath: uniform(&lattice_program, "u_breath"),
             reveal: uniform(&lattice_program, "u_reveal"),
             drift: uniform(&lattice_program, "u_drift"),
+            scale: uniform(&lattice_program, "u_scale"),
             bg: uniform(&lattice_program, "u_bg"),
             dot: uniform(&lattice_program, "u_dot"),
             warm: uniform(&lattice_program, "u_warm"),
@@ -173,14 +177,17 @@ impl Gpu {
             texture,
             framebuffer,
             size: (0, 0),
+            scale: 1,
             cells: (0, 0),
         }))
     }
 
-    /// Sizes the focus texture for a canvas of `width` by `height` pixels.
-    pub fn resize(&mut self, width: i32, height: i32) {
-        self.size = (width, height);
-        self.cells = ((width + 5) / 6 + 1, (height + 5) / 6 + 2);
+    /// Sizes the focus texture for a window of `css` pixels, drawn on a canvas of `size`
+    /// pixels at `scale` CSS pixels each.
+    pub fn resize(&mut self, size: (i32, i32), css: (i32, i32), scale: i32) {
+        self.size = size;
+        self.scale = scale;
+        self.cells = ((css.0 + 5) / 6 + 1, (css.1 + 5) / 6 + 2);
         let gl = &self.gl;
         gl.bind_texture(Gl::TEXTURE_2D, Some(&self.texture));
         let _ = gl.tex_image_2d_with_i32_and_i32_and_i32_and_format_and_type_and_opt_u8_array(
@@ -242,6 +249,7 @@ impl Gpu {
         gl.uniform1f(u.breath.as_ref(), 1.0);
         gl.uniform1f(u.reveal.as_ref(), reveal as f32);
         gl.uniform1f(u.drift.as_ref(), drift as f32);
+        gl.uniform1f(u.scale.as_ref(), self.scale as f32);
         let [bg, dot, warm, hot] = colors;
         gl.uniform3fv_with_f32_array(u.bg.as_ref(), bg);
         gl.uniform3fv_with_f32_array(u.dot.as_ref(), dot);

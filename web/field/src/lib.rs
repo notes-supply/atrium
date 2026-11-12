@@ -124,6 +124,9 @@ struct Field {
     paused: bool,
     tick: Tick,
     perf: Option<perf::Readout>,
+    /// The window's size in CSS pixels, and CSS pixels per canvas pixel.
+    css: (i32, i32),
+    scale: u32,
 }
 
 type Shared = Rc<RefCell<Field>>;
@@ -214,6 +217,8 @@ impl Field {
             paused: false,
             tick: OnceCell::new(),
             perf: None,
+            css: (1, 1),
+            scale: 1,
         }));
         let tick = {
             let field = Rc::clone(&field);
@@ -237,12 +242,7 @@ impl Field {
         )
     }
 
-    fn size(&self) -> (i32, i32) {
-        let size = |pixels: u32| i32::try_from(pixels).unwrap_or(i32::MAX);
-        (size(self.canvas.width()), size(self.canvas.height()))
-    }
-
-    /// One canvas pixel per CSS pixel of the window.
+    /// One canvas pixel per CSS pixel of the window, or per `scale` CSS pixels each way.
     fn resize(&mut self) {
         let window = web_sys::window();
         let measure = |value: Option<Result<JsValue, JsValue>>| -> u32 {
@@ -262,12 +262,16 @@ impl Field {
         };
         let width = measure(window.as_ref().map(web_sys::Window::inner_width));
         let height = measure(window.as_ref().map(web_sys::Window::inner_height));
+        let int = |pixels: u32| i32::try_from(pixels).unwrap_or(i32::MAX);
+        self.css = (int(width), int(height));
+        let scale = self.scale;
+        let (width, height) = (width.div_ceil(scale), height.div_ceil(scale));
         if width != self.canvas.width() || height != self.canvas.height() {
             self.canvas.set_width(width);
             self.canvas.set_height(height);
         }
-        let (width, height) = self.size();
-        self.gpu.resize(width, height);
+        self.gpu
+            .resize((int(width), int(height)), self.css, int(scale));
         self.dirty = true;
     }
 
@@ -317,7 +321,7 @@ impl Field {
             }
             return out;
         }
-        let height = f64::from(self.size().1);
+        let height = f64::from(self.css.1);
         for surface in surfaces {
             let rect = surface.get_bounding_client_rect();
             if rect.bottom() < -160.0 || rect.top() > height + 160.0 || rect.width() == 0.0 {
@@ -529,13 +533,15 @@ impl Field {
             Mode::Calm => (age / 320.0).min(1.0),
             _ => (age / self.entrance).min(1.0),
         };
+        // A whole number of canvas pixels, so a scaled lattice keeps its dots' size.
         let drift = if mode.quiet() {
             0.0
         } else {
             let scrolled = web_sys::window()
                 .and_then(|window| window.scroll_y().ok())
                 .unwrap_or_default();
-            (scrolled * 0.3).round()
+            let scale = f64::from(self.scale);
+            (scrolled * 0.3 / scale).round() * scale
         };
         if which & 1 != 0 {
             let t = if mode.quiet() {
@@ -560,7 +566,7 @@ impl Field {
         let moving = self.step(dt, time);
         let reveal = self.passes(time, 3);
         let cpu = now() - begun;
-        let (mode, size) = (self.mode().name(), self.size());
+        let (mode, size) = (self.mode().name(), self.css);
         if let Some(readout) = &mut self.perf {
             readout.frame(&self.gpu.gl, cpu, time, mode, size);
         }
