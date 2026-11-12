@@ -8,8 +8,10 @@
 //!
 //! The canvas draws at one pixel per CSS pixel and the browser scales it with
 //! `image-rendering: pixelated`, so a pixel ratio of 2 looks the same at a quarter of the
-//! fill. Without WebGL2 the page keeps the CSS lattice on `<html>`. With `?perf` in the
-//! address, a readout shows the field's frame rate and frame time.
+//! fill. When the GPU cannot keep up, the field steps down to cheaper versions of itself and
+//! last to the still frame (`stage.rs`). Without WebGL2 the page keeps the CSS lattice on
+//! `<html>`. With `?perf` in the address, a readout shows the field's frame rate, frame time
+//! and stage; `?perf=full` holds it at full quality.
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::VecDeque;
@@ -19,7 +21,7 @@ use wasm_bindgen::prelude::*;
 use web_sys::js_sys::{Array, Function, Object, Reflect, WeakMap};
 use web_sys::{
     AddEventListenerOptions, CustomEvent, Document, DomRect, Element, Event, EventTarget,
-    HtmlCanvasElement, MediaQueryList, PointerEvent,
+    HtmlCanvasElement, MediaQueryList, PointerEvent, WebGlSync,
 };
 
 mod gpu;
@@ -27,11 +29,13 @@ mod motion;
 mod perf;
 mod sampler;
 mod shaders;
+mod stage;
 
 use gpu::{Frame, Gpu, put};
 use motion::{Mode, Spring, ask, machine};
 use sampler::Sampler;
 use shaders::{MAX_P, MAX_R, MAX_RIP};
+use stage::{Governor, Stage};
 
 /// Starts the field on the page's `data-module="field"` canvas, and the readout with
 /// `?perf`.
@@ -43,9 +47,11 @@ use shaders::{MAX_P, MAX_R, MAX_RIP};
 pub fn start() -> Result<(), JsValue> {
     let window = web_sys::window().ok_or("no window")?;
     let document = window.document().ok_or("no document")?;
-    let debug = web_sys::UrlSearchParams::new_with_str(&window.location().search()?)?.has("perf");
+    let params = web_sys::UrlSearchParams::new_with_str(&window.location().search()?)?;
+    let debug = params.has("perf");
+    let held = params.get("perf").as_deref() == Some("full");
     let field = match document.query_selector("canvas[data-module~=field]")? {
-        Some(canvas) => Field::start(&document, canvas.dyn_into()?)?,
+        Some(canvas) => Field::start(&document, canvas.dyn_into()?, held)?,
         None => None,
     };
     if debug {
@@ -97,6 +103,13 @@ struct Mark {
 
 type Tick = OnceCell<Closure<dyn FnMut(f64)>>;
 
+/// The fence after the last drawn frame. The one after the frame that stepped down is a
+/// barrier: it waits on the frames still queued from the old stage, so it counts for neither.
+enum Fence {
+    Frame(WebGlSync),
+    Barrier(WebGlSync),
+}
+
 struct Field {
     gpu: Gpu,
     canvas: HtmlCanvasElement,
@@ -124,9 +137,14 @@ struct Field {
     paused: bool,
     tick: Tick,
     perf: Option<perf::Readout>,
-    /// The window's size in CSS pixels, and CSS pixels per canvas pixel.
+    /// The window's size in CSS pixels, and CSS pixels per canvas pixel as drawn.
     css: (i32, i32),
     scale: u32,
+    governor: Governor,
+    fence: Option<Fence>,
+    /// For the tests, with `?perf`: milliseconds of busy work added to every drawn frame,
+    /// each then counted late.
+    drag: f64,
 }
 
 type Shared = Rc<RefCell<Field>>;
@@ -166,7 +184,11 @@ fn elements(list: Result<web_sys::NodeList, JsValue>) -> Vec<Element> {
 impl Field {
     /// Builds the field and starts its loop, or leaves the CSS lattice when the browser has
     /// no WebGL2 or the shaders do not build.
-    fn start(document: &Document, canvas: HtmlCanvasElement) -> Result<Option<Shared>, JsValue> {
+    fn start(
+        document: &Document,
+        canvas: HtmlCanvasElement,
+        held: bool,
+    ) -> Result<Option<Shared>, JsValue> {
         let gpu = match Gpu::new(&canvas) {
             Ok(Some(gpu)) => gpu,
             Ok(None) => return Ok(None),
@@ -219,6 +241,9 @@ impl Field {
             perf: None,
             css: (1, 1),
             scale: 1,
+            governor: Governor::new(held),
+            fence: None,
+            drag: 0.0,
         }));
         let tick = {
             let field = Rc::clone(&field);
@@ -237,7 +262,7 @@ impl Field {
 
     fn mode(&self) -> Mode {
         Mode::new(
-            self.reduced.matches(),
+            self.reduced.matches() || self.governor.stage == Stage::Still,
             self.root.get_attribute("data-intensity").as_deref(),
         )
     }
@@ -560,15 +585,23 @@ impl Field {
 
     /// Draws one frame, and says whether another is needed.
     fn draw(&mut self, time: f64) -> bool {
+        let scale = self.governor.stage.scale();
+        if scale != self.scale {
+            // Resizing clears the canvas, so a new scale waits for a frame that then draws.
+            self.scale = scale;
+            self.resize();
+        }
         let begun = now();
         let dt = ((time - self.last) / 1000.0).min(0.05);
         self.last = time;
         let moving = self.step(dt, time);
         let reveal = self.passes(time, 3);
+        while now() - begun < self.drag {}
         let cpu = now() - begun;
+        let stepped = self.govern(time);
         let (mode, size) = (self.mode().name(), self.css);
         if let Some(readout) = &mut self.perf {
-            readout.frame(&self.gpu.gl, cpu, time, mode, size);
+            readout.frame(&self.gpu.gl, cpu, time, mode, size, &self.governor);
         }
         if !self.drawn {
             self.drawn = true;
@@ -576,7 +609,39 @@ impl Field {
         }
         self.dirty = false;
         self.last_draw = time;
-        moving || reveal < 1.0
+        moving || reveal < 1.0 || stepped
+    }
+
+    /// Asks whether the GPU finished the last drawn frame before this one, counts it, and
+    /// leaves a fence after this one. A step keeps its frame's fence until the GPU passes
+    /// it, so the frames still queued from the old stage make no new stage late. Says
+    /// whether the field stepped down.
+    fn govern(&mut self, time: f64) -> bool {
+        let late = match self.fence.take() {
+            None => None,
+            Some(Fence::Frame(fence)) => {
+                let passed = self.gpu.passed(&fence);
+                self.gpu.forget(&fence);
+                Some(!passed)
+            }
+            Some(Fence::Barrier(fence)) => {
+                if self.gpu.passed(&fence) {
+                    self.gpu.forget(&fence);
+                } else {
+                    self.fence = Some(Fence::Barrier(fence));
+                }
+                None
+            }
+        };
+        if self.fence.is_none() {
+            self.fence = self.gpu.fence().map(Fence::Frame);
+        }
+        let late = if self.drag > 0.0 { Some(true) } else { late };
+        let stepped = late.is_some_and(|late| self.governor.record(late, time - self.started));
+        if stepped && let Some(Fence::Frame(fence)) = self.fence.take() {
+            self.fence = Some(Fence::Barrier(fence));
+        }
+        stepped
     }
 
     fn on_frame(&mut self, time: f64) {
@@ -588,13 +653,14 @@ impl Field {
         let pointer_live = self.pointer.inside && time - self.pointer.moved < 1200.0;
         // Breathing alone is slow, so it draws at 30 frames a second; anything the reader
         // does draws at the display's rate.
-        let busy = if self.dirty
+        let due = self.dirty
             || pointer_live
             || !self.trail.is_empty()
             || !self.ripples.is_empty()
             || !breathing
-            || time - self.last_draw > 30.0
-        {
+            || time - self.last_draw > 30.0;
+        // A stage that draws less often keeps asking until its interval has passed.
+        let busy = if due && time - self.last_draw >= self.governor.stage.interval() {
             self.draw(time)
         } else {
             true
@@ -748,8 +814,10 @@ fn wire(field: &Shared, window: &web_sys::Window, document: &Document) {
     lost.forget();
 }
 
-/// The bench's handle, `window.__field`, only with `?perf`: the context, `pause(on)` and
-/// `bench(count, which)`.
+/// The bench's handle, `window.__field`, only with `?perf`: the context, `pause(on)`,
+/// `bench(count, which)`, `stage()`, and `slow(ms)`, which adds `ms` of busy work to every
+/// frame the field draws, counts each late and lets go of `?perf=full`, so a test can
+/// watch it step down from full.
 fn expose(field: &Shared) -> Result<(), JsValue> {
     let handle = Object::new();
     Reflect::set(&handle, &"gl".into(), &field.borrow().gpu.gl)?;
@@ -780,6 +848,31 @@ fn expose(field: &Shared) -> Result<(), JsValue> {
         bench.as_ref().unchecked_ref::<Function>(),
     )?;
     bench.forget();
+    let stage = {
+        let field = Rc::clone(field);
+        Closure::<dyn FnMut() -> String>::new(move || field.borrow().governor.stage.name().into())
+    };
+    Reflect::set(
+        &handle,
+        &"stage".into(),
+        stage.as_ref().unchecked_ref::<Function>(),
+    )?;
+    stage.forget();
+    let slow = {
+        let field = Rc::clone(field);
+        Closure::<dyn FnMut(f64)>::new(move |ms| {
+            let mut field = field.borrow_mut();
+            field.drag = ms;
+            field.governor.held = false;
+            field.touch();
+        })
+    };
+    Reflect::set(
+        &handle,
+        &"slow".into(),
+        slow.as_ref().unchecked_ref::<Function>(),
+    )?;
+    slow.forget();
     let window = web_sys::window().ok_or("no window")?;
     Reflect::set(&window, &"__field".into(), &handle)?;
     Ok(())

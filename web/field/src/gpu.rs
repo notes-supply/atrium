@@ -3,7 +3,7 @@
 use wasm_bindgen::prelude::*;
 use web_sys::{
     HtmlCanvasElement, WebGl2RenderingContext as Gl, WebGlContextAttributes, WebGlFramebuffer,
-    WebGlPowerPreference, WebGlProgram, WebGlShader, WebGlTexture, WebGlUniformLocation,
+    WebGlPowerPreference, WebGlProgram, WebGlShader, WebGlSync, WebGlTexture, WebGlUniformLocation,
 };
 
 use crate::shaders::{self, MAX_P, MAX_R, MAX_RIP};
@@ -256,6 +256,23 @@ impl Gpu {
         gl.uniform3fv_with_f32_array(u.warm.as_ref(), warm);
         gl.uniform3fv_with_f32_array(u.hot.as_ref(), hot);
         gl.draw_arrays(Gl::TRIANGLES, 0, 3);
+    }
+
+    /// A fence after everything drawn so far.
+    pub fn fence(&self) -> Option<WebGlSync> {
+        self.gl.fence_sync(Gl::SYNC_GPU_COMMANDS_COMPLETE, 0)
+    }
+
+    /// Whether the GPU has passed `fence`, which the page learns only between tasks.
+    pub fn passed(&self, fence: &WebGlSync) -> bool {
+        self.gl
+            .get_sync_parameter(fence, Gl::SYNC_STATUS)
+            .as_f64()
+            .is_some_and(|status| (status - f64::from(Gl::SIGNALED)).abs() < 0.5)
+    }
+
+    pub fn forget(&self, fence: &WebGlSync) {
+        self.gl.delete_sync(Some(fence));
     }
 
     /// Waits for the GPU by reading one pixel back.

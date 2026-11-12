@@ -1,7 +1,8 @@
 //! With `?perf` in the address, a readout of the field's frames per second and frame time,
 //! measured in the page. CPU is the time to build and submit a frame; GPU is the time the
 //! GPU spent on it, where the driver offers a timer query (most desktop GPUs do,
-//! `SwiftShader` does not).
+//! `SwiftShader` does not). Then the field's stage, its late time and late frames since it
+//! last stepped, and each step down: to what, when, and on how many late frames.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -10,6 +11,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::{Document, Element, WebGl2RenderingContext as Gl, WebGlQuery};
 
+use crate::stage::Governor;
 use crate::{Shared, expose};
 
 /// `EXT_disjoint_timer_query_webgl2`'s constants.
@@ -39,6 +41,7 @@ struct State {
     painting: bool,
     mode: &'static str,
     size: (i32, i32),
+    governor: Option<Governor>,
 }
 
 /// The readout's half that the field feeds every frame.
@@ -65,13 +68,22 @@ pub fn mount(document: &Document, field: Option<&Shared>) -> Result<(), JsValue>
         let field = field.borrow();
         state.mode = field.mode().name();
         state.size = field.css;
+        state.governor = Some(field.governor.clone());
     }
     state.paint();
     Ok(())
 }
 
 impl Readout {
-    pub fn frame(&mut self, gl: &Gl, cpu: f64, time: f64, mode: &'static str, size: (i32, i32)) {
+    pub fn frame(
+        &mut self,
+        gl: &Gl,
+        cpu: f64,
+        time: f64,
+        mode: &'static str,
+        size: (i32, i32),
+        governor: &Governor,
+    ) {
         let mut state = self.0.borrow_mut();
         push(&mut state.cpu, cpu);
         if state.last > 0.0 {
@@ -81,6 +93,7 @@ impl Readout {
         state.last = time;
         state.mode = mode;
         state.size = size;
+        state.governor = Some(governor.clone());
         state.time_gpu(gl);
         if !state.painting && state.out.is_some() {
             state.painting = true;
@@ -191,10 +204,45 @@ impl State {
             &fixed(percentile(&self.cpu, 0.9), 2),
             " ms\ngpu  ",
             &gpu,
+            &self.governor.as_ref().map_or_else(String::new, stage),
         ]
         .concat();
         out.set_text_content(Some(&text));
     }
+}
+
+/// The stage's lines: `stage half  late 40 ms, 2 of 31 frames`, then one line for each
+/// step down.
+fn stage(governor: &Governor) -> String {
+    let (late, of) = governor.late();
+    let mut text = [
+        "\nstage ",
+        governor.stage.name(),
+        if governor.held { ", held" } else { "" },
+        "  late ",
+        &fixed(governor.owed, 0),
+        " ms, ",
+        &digits(late.into()),
+        " of ",
+        &digits(of.into()),
+        " frames",
+    ]
+    .concat();
+    for step in &governor.steps {
+        text += &[
+            "\nstep  ",
+            step.to.name(),
+            " at ",
+            &fixed(step.at / 1000.0, 2),
+            " s, ",
+            &digits(step.late.into()),
+            " of ",
+            &digits(step.of.into()),
+            " frames late",
+        ]
+        .concat();
+    }
+    text
 }
 
 fn size(pixels: i32) -> String {
@@ -266,6 +314,27 @@ mod tests {
         assert_eq!(fixed(3.04, 1), "3.0");
         assert_eq!(fixed(59.6, 0), "60");
         assert_eq!(fixed(0.004, 2), "0.00");
+    }
+
+    #[test]
+    fn the_stage_says_why_it_stepped() {
+        let mut governor = Governor::new(false);
+        assert_eq!(stage(&governor), "\nstage full  late 0 ms, 0 of 0 frames");
+        governor.record(false, 50.0);
+        for frame in 1..=4 {
+            governor.record(true, 50.0 + f64::from(frame) * 100.0);
+        }
+        governor.record(true, 600.0);
+        assert_eq!(
+            stage(&governor),
+            "\nstage half  late 0 ms, 0 of 0 frames\nstep  half at 0.60 s, 5 of 6 frames late"
+        );
+        let mut held = Governor::new(true);
+        held.record(true, 40.0);
+        assert_eq!(
+            stage(&held),
+            "\nstage full, held  late 40 ms, 1 of 1 frames"
+        );
     }
 
     #[test]

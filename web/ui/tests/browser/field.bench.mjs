@@ -1,5 +1,5 @@
-// Frame time of the field in SwiftShader (software GL on the CPU) at 1440 by 900, pixel
-// ratio 1 and 2, for this Wasm field and, with PROTOTYPE set, the prototype's JavaScript
+// Frame time of the field in SwiftShader (software GL on the CPU) at 1440 by 900, held at
+// full quality with ?perf=full, pixel ratio 1 and 2, for this Wasm field and, with PROTOTYPE set, the prototype's JavaScript
 // one on the same page, alternating, five rounds each.
 //
 // Bench: the page's own loop is paused, then 150 forced frames are drawn through the
@@ -36,7 +36,7 @@ test('field frame time', async ({ browser }) => {
       for (const [side, path] of round % 2 ? [...sides].reverse() : sides) {
         const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: dpr, colorScheme: 'light' });
         const page = await context.newPage();
-        await page.goto(`${path}?hour=9&perf`);
+        await page.goto(`${path}?hour=9&perf=full`);
         await page.waitForFunction(() => window.__field && document.documentElement.classList.contains('gl-on'));
         await page.evaluate(() => document.fonts.ready);
         await page.waitForTimeout(1500);
