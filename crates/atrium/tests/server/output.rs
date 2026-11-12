@@ -104,13 +104,23 @@ async fn assets_have_hashed_names_and_are_immutable() {
 #[tokio::test]
 async fn a_page_answers_if_none_match() {
     let atrium = Atrium::owner().await;
-    let first = atrium.get("/").await;
-    let tag = first.header("etag").unwrap();
+    let mut tag = atrium.get("/").await.header("etag").unwrap().to_owned();
     assert!(
         tag.starts_with('"') && tag.len() == 34,
         "a strong tag: {tag}"
     );
-    let again = atrium.get_with("/", &[("if-none-match", tag)]).await;
+    // Home tells the time, so a minute that turns between two requests changes the page and
+    // its tag. Then the answer is the new page, and the next request asks with its tag.
+    let mut again = atrium.get_with("/", &[("if-none-match", &tag)]).await;
+    for _ in 0..2 {
+        if again.status == 304 {
+            break;
+        }
+        let changed = again.header("etag").unwrap().to_owned();
+        assert_ne!(changed, tag, "the same page answered 200: {}", again.status);
+        tag = changed;
+        again = atrium.get_with("/", &[("if-none-match", &tag)]).await;
+    }
     assert_eq!(again.status, 304);
     assert_eq!(again.body, "");
     let other = atrium.get_with("/", &[("if-none-match", "\"x\"")]).await;
