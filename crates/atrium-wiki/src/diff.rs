@@ -195,7 +195,7 @@ fn line_view(lines: &[DiffLine]) -> Markup {
     }
 }
 
-/// `v22, 9 Nov, blackbox`.
+/// `v22, 9 Nov, ironbark`.
 fn label(shell: &Shell, event: &Event, n: Option<u64>) -> String {
     let version = n.map_or_else(|| event.commit.short().to_owned(), |n| format!("v{n}"));
     format!(

@@ -70,7 +70,7 @@ test('field: draws the lattice, finest and in the colour of trouble around what 
   const drawn = await page.evaluate(() => performance.now());
   await page.waitForFunction((drawn) => performance.now() > drawn + 1200, drawn);
   await keepsAsking(page, 10);
-  const needs = await page.locator('.map [data-m=aeolus].dock circle').boundingBox();
+  const needs = await page.locator('.map [data-m=willow].dock circle').boundingBox();
   const at = [Math.round(needs.x + needs.width / 2) - 60, Math.round(needs.y + needs.height / 2) - 60, 120, 120];
   const [whole, near, corner] = await sample(page, [at, [0, 0, 160, 60]]);
   expect(whole.dots, 'the resting lattice').toBeGreaterThan(0);

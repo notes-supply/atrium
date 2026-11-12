@@ -48,7 +48,8 @@ async fn admit(
 }
 
 /// Refuses a request whose `Host` is not one of `allowed`, so a page cannot be reached
-/// through a name that someone else controls.
+/// through a name that someone else controls. The port is not compared, and an IPv6
+/// address matches with or without its brackets.
 pub async fn known_host(
     State(allowed): State<Arc<[String]>>,
     request: Request,
@@ -63,12 +64,19 @@ pub async fn known_host(
         Some(host)
             if allowed
                 .iter()
-                .any(|name| name.eq_ignore_ascii_case(host.host())) =>
+                .any(|name| bare(name).eq_ignore_ascii_case(bare(host.host()))) =>
         {
             next.run(request).await
         }
         _ => (StatusCode::MISDIRECTED_REQUEST, "unknown host\n").into_response(),
     }
+}
+
+/// A host name without the brackets of an IPv6 address.
+fn bare(host: &str) -> &str {
+    host.strip_prefix('[')
+        .and_then(|host| host.strip_suffix(']'))
+        .unwrap_or(host)
 }
 
 /// The security headers, and `Cache-Control: no-store` on every response that has not set
@@ -202,11 +210,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_private_route_answers_the_tailnet() {
-        assert_eq!(
-            status(Access::Private, Viewer::Tailnet).await,
-            StatusCode::OK
-        );
+    async fn a_private_route_answers_the_owner() {
+        assert_eq!(status(Access::Private, Viewer::Owner).await, StatusCode::OK);
     }
 
     #[tokio::test]
@@ -215,6 +220,54 @@ mod tests {
             status(Access::Public, Viewer::Anonymous).await,
             StatusCode::OK
         );
+    }
+
+    async fn host_status(allowed: &[&str], host: &str) -> StatusCode {
+        let allowed: Arc<[String]> = allowed.iter().map(|name| (*name).to_owned()).collect();
+        let request = Request::get("/")
+            .header(HOST, host)
+            .body(Body::empty())
+            .unwrap();
+        Router::new()
+            .route("/", get(|| async { "inside" }))
+            .layer(from_fn_with_state(allowed, known_host))
+            .oneshot(request)
+            .await
+            .unwrap()
+            .status()
+    }
+
+    #[tokio::test]
+    async fn the_loopback_names_are_allowed_with_any_port() {
+        let loopback = ["localhost", "127.0.0.1", "[::1]"];
+        for host in [
+            "localhost",
+            "LOCALHOST:8080",
+            "127.0.0.1",
+            "127.0.0.1:8080",
+            "[::1]",
+            "[::1]:8080",
+        ] {
+            assert_eq!(host_status(&loopback, host).await, StatusCode::OK, "{host}");
+        }
+        for host in [
+            "evil.example",
+            "evil.example:8080",
+            "127.0.0.2:8080",
+            "[::2]:8080",
+        ] {
+            assert_eq!(
+                host_status(&loopback, host).await,
+                StatusCode::MISDIRECTED_REQUEST,
+                "{host}"
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn an_ipv6_address_is_allowed_with_or_without_its_brackets() {
+        assert_eq!(host_status(&["::1"], "[::1]:8080").await, StatusCode::OK);
+        assert_eq!(host_status(&["[::1]"], "[::1]").await, StatusCode::OK);
     }
 
     #[test]

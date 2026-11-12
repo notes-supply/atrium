@@ -3,22 +3,29 @@
 
 mod assets;
 mod features;
+mod local;
 mod log;
 mod middleware;
 mod visit;
 
+use std::future::IntoFuture;
 use std::net::SocketAddr;
+use std::path::PathBuf;
+use std::pin::pin;
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use atrium_core::Viewer;
 use atrium_ui::{Chrome, Footnote, Shell};
+use axum::http::Uri;
 use axum::response::Response;
 use axum::routing::get;
 use axum::{Extension, Router};
+use clap::builder::ArgPredicate;
 use serde_json::json;
 use tokio::net::TcpListener;
-use tokio::signal::unix::{SignalKind, signal};
+use tokio::signal::unix::{Signal, SignalKind, signal};
+use tokio::sync::oneshot;
 
 use jiff::tz::TimeZone;
 
@@ -30,29 +37,63 @@ use crate::visit::{Clock, Visits};
 #[derive(Debug, Clone, clap::Parser)]
 #[command(version, about)]
 pub struct Config {
-    /// The address to listen on.
-    #[arg(long, env = "ATRIUM_ADDR", default_value = "0.0.0.0:8080")]
+    /// The address to listen on. Loopback only by default; the image sets `0.0.0.0:8080`.
+    #[arg(long, env = "ATRIUM_ADDR", default_value = "127.0.0.1:8080")]
     pub addr: SocketAddr,
-    /// Who reaches this listener: `tailnet` sees private features, `anonymous` only public ones.
-    #[arg(long, env = "ATRIUM_VIEWER")]
+    /// Who reaches this listener: `owner`, the person this Atrium belongs to, sees private
+    /// features, and `anonymous` only public ones. `tailnet` is another name for `owner`.
+    /// `owner` by default with `--wiki-folder`.
+    #[arg(
+        long,
+        env = "ATRIUM_VIEWER",
+        required = false,
+        required_unless_present = "wiki_folder",
+        default_value_if("wiki_folder", ArgPredicate::IsPresent, "owner")
+    )]
     pub viewer: Viewer,
-    /// The host names requests may name, separated by commas. Health checks may name any.
+    /// The host names requests may name, separated by commas, each with any port. An IPv6
+    /// address may be written with or without its brackets. Health checks may name any.
     #[arg(
         long,
         env = "ATRIUM_ALLOWED_HOSTS",
         value_delimiter = ',',
-        default_value = "localhost"
+        default_values = ["localhost", "127.0.0.1", "[::1]"]
     )]
     pub allowed_hosts: Vec<String>,
     /// Mneme's base URL, such as `http://mneme:8080`.
-    #[arg(long, env = "ATRIUM_MNEME_URL", required_unless_present = "demo")]
+    #[arg(long, env = "ATRIUM_MNEME_URL", required_unless_present_any = ["demo", "wiki_folder"])]
     pub mneme_url: Option<String>,
+    /// A wiki folder on this machine, a Git clone, to read through a `mneme serve --folder`
+    /// that Atrium starts and stops itself. The pages show the whole wiki, so `--addr` must
+    /// then be a loopback address.
+    #[arg(
+        long,
+        env = "ATRIUM_WIKI_FOLDER",
+        value_name = "DIR",
+        conflicts_with_all = ["mneme_url", "demo"]
+    )]
+    pub wiki_folder: Option<PathBuf>,
+    /// The Mneme binary that `--wiki-folder` starts.
+    #[arg(
+        long,
+        env = "ATRIUM_MNEME_BIN",
+        value_name = "PATH",
+        default_value = "mneme"
+    )]
+    pub mneme_bin: PathBuf,
+    /// The name the pages give the place that holds the wiki's record, such as the server
+    /// Mneme runs on. By default the host of `--mneme-url`, this machine's short host name
+    /// with `--wiki-folder`, and the demo's own in the demo.
+    #[arg(long, env = "ATRIUM_RECORD_NAME", value_name = "NAME", value_parser = record_name)]
+    pub record_name: Option<String>,
     /// How long one call to Mneme may take, in milliseconds.
     #[arg(long, env = "ATRIUM_MNEME_TIMEOUT_MS", default_value_t = 3000)]
     pub mneme_timeout_ms: u64,
-    /// The reader's time zone, for every time a page shows and the light of the hour.
-    #[arg(long, env = "ATRIUM_TIME_ZONE", default_value = "Europe/Stockholm", value_parser = zone)]
-    pub time_zone: TimeZone,
+    /// The reader's time zone, for every time a page shows and the light of the hour. The
+    /// system's by default, from `TZ` or `/etc/localtime`, or UTC when it names none; the
+    /// demo's own is Europe/Stockholm.
+    #[arg(long, env = "ATRIUM_TIME_ZONE", value_parser = zone)]
+    pub time_zone: Option<TimeZone>,
     /// Serve the design's invented wiki instead of a Mneme, with the clock held at its time.
     /// `away` shows the wiki out of reach.
     #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "wiki")]
@@ -68,18 +109,86 @@ pub enum Demo {
     Away,
 }
 
+fn record_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() {
+        Err("the record's name is empty".to_owned())
+    } else {
+        Ok(name.to_owned())
+    }
+}
+
 fn zone(name: &str) -> Result<TimeZone, String> {
     TimeZone::get(name).map_err(|error| format!("{name}: {error}"))
 }
 
-/// Serves until SIGTERM or Ctrl-C, then finishes the requests in flight.
+impl Config {
+    /// The name the pages give the place that holds the record: the one named, or the
+    /// demo's, or this machine's for a wiki folder, whose clone is the record, or the host
+    /// that `--mneme-url` names.
+    #[must_use]
+    pub fn record(&self) -> String {
+        if let Some(name) = &self.record_name {
+            return name.clone();
+        }
+        if self.demo.is_some() {
+            return atrium_wiki::demo::RECORD.to_owned();
+        }
+        if self.wiki_folder.is_some() {
+            return local::host_name();
+        }
+        self.mneme_url
+            .as_deref()
+            .and_then(|url| url.parse::<Uri>().ok())
+            .and_then(|url| url.host().map(str::to_owned))
+            .unwrap_or_else(|| "Mneme".to_owned())
+    }
+
+    /// The reader's time zone: the one named, or the demo's, whose clock is set in it, or the
+    /// system's, or UTC when the system names none.
+    #[must_use]
+    pub fn zone(&self) -> TimeZone {
+        match (&self.time_zone, self.demo) {
+            (Some(zone), _) => zone.clone(),
+            (None, Some(_)) => atrium_wiki::demo::zone(),
+            (None, None) => TimeZone::try_system().unwrap_or(TimeZone::UTC),
+        }
+    }
+}
+
+/// Serves until SIGTERM or Ctrl-C, then finishes the requests in flight. With
+/// `--wiki-folder` it first starts a Mneme for the folder, and stops it last.
 ///
 /// # Errors
 ///
-/// Fails when the address cannot be bound or the server stops on an I/O error.
+/// Fails when the address cannot be bound, the server stops on an I/O error, or the Mneme
+/// it started cannot start or stops while Atrium runs.
 pub async fn run(config: Config) -> Result<()> {
     let mut terminate = signal(SignalKind::terminate()).context("watching for SIGTERM")?;
-    let router = app(&config).await?;
+    let mut mneme = None;
+    let router = match &config.wiki_folder {
+        Some(folder) => {
+            if !config.addr.ip().is_loopback() {
+                bail!(
+                    "--wiki-folder shows the whole wiki to whoever reaches Atrium, with no \
+                     login, so --addr must be a loopback address such as 127.0.0.1:8080, not {}",
+                    config.addr
+                );
+            }
+            // A stop asked for while Mneme builds its index drops it, which kills it.
+            let started = tokio::select! {
+                started = local::Mneme::start(&config.mneme_bin, folder) => started?,
+                () = asked_to_stop(&mut terminate) => {
+                    log::emit("stopped", json!({}));
+                    return Ok(());
+                }
+            };
+            let router = site(&config, started.url(), Clock::System)?;
+            mneme = Some(started);
+            router
+        }
+        None => app(&config).await?,
+    };
     let listener = TcpListener::bind(config.addr)
         .await
         .with_context(|| format!("binding {}", config.addr))?;
@@ -87,36 +196,68 @@ pub async fn run(config: Config) -> Result<()> {
         "listening",
         json!({ "addr": listener.local_addr()?, "viewer": config.viewer.to_string() }),
     );
-    axum::serve(listener, router)
-        .with_graceful_shutdown(async move {
-            tokio::select! {
-                _ = terminate.recv() => {}
-                _ = tokio::signal::ctrl_c() => {}
-            }
-        })
-        .await?;
+    let (stop, stopping) = oneshot::channel::<()>();
+    let server = axum::serve(listener, router).with_graceful_shutdown(async {
+        let _ = stopping.await;
+    });
+    let mut server = pin!(server.into_future());
+    tokio::select! {
+        biased;
+        () = asked_to_stop(&mut terminate) => {}
+        ended = &mut server => return ended.context("serving"),
+        // Atrium is no use without it, so it stops too, and a supervisor restarts both.
+        error = stopped(&mut mneme) => return Err(error),
+    }
+    let _ = stop.send(());
+    server.await.context("serving")?;
+    if let Some(mneme) = mneme {
+        mneme.stop().await;
+    }
     log::emit("stopped", json!({}));
     Ok(())
 }
 
-/// The whole site for the viewer `config` names, as one router.
+/// Until SIGTERM or Ctrl-C.
+async fn asked_to_stop(terminate: &mut Signal) {
+    tokio::select! {
+        _ = terminate.recv() => {}
+        _ = tokio::signal::ctrl_c() => {}
+    }
+}
+
+/// Why the Mneme that Atrium started stopped, once it has; never without one.
+async fn stopped(mneme: &mut Option<local::Mneme>) -> anyhow::Error {
+    match mneme {
+        Some(mneme) => mneme.stopped().await,
+        None => std::future::pending().await,
+    }
+}
+
+/// The whole site for the viewer `config` names, as one router, in front of the Mneme at
+/// `--mneme-url` or the demo's. A wiki folder's Mneme is started by [`run`].
 ///
 /// # Errors
 ///
-/// Fails when a feature cannot be built from the configuration.
+/// Fails when a feature cannot be built from the configuration, or the configuration names
+/// a wiki folder.
 pub async fn app(config: &Config) -> Result<Router> {
+    match (config.demo, &config.mneme_url) {
+        (Some(demo), _) => {
+            let url = atrium_wiki::demo::serve(demo == Demo::Away).await?;
+            site(config, &url, demo_clock())
+        }
+        (None, Some(url)) => site(config, url, Clock::System),
+        (None, None) => bail!("run starts the Mneme of a wiki folder and serves in front of it"),
+    }
+}
+
+/// The whole site in front of the Mneme at `mneme_url`, on `clock`.
+fn site(config: &Config, mneme_url: &str, clock: Clock) -> Result<Router> {
     let mut assets = Assets::default();
     let (stylesheet, fonts) = assets.add_styles();
     let scripts = assets.add_scripts();
-    let (mneme_url, clock) = match config.demo {
-        Some(demo) => (
-            atrium_wiki::demo::serve(demo == Demo::Away).await?,
-            demo_clock(),
-        ),
-        None => (config.mneme_url.clone().unwrap_or_default(), Clock::System),
-    };
     let site = Arc::new(Site::new(
-        features::registry(config, &mneme_url)?,
+        features::registry(config, mneme_url)?,
         config.viewer,
     ));
     let footnotes = Arc::clone(&site);
@@ -130,7 +271,7 @@ pub async fn app(config: &Config) -> Result<Router> {
     });
     let visits = Visits {
         clock,
-        zone: config.time_zone.clone(),
+        zone: config.zone(),
     };
     let pages = site
         .all()
@@ -169,4 +310,72 @@ fn demo_clock() -> Clock {
 
 async fn not_found(shell: Shell) -> Response {
     shell.not_found()
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    fn parse(args: &[&str]) -> Config {
+        Config::try_parse_from([&["atrium", "--viewer", "owner"], args].concat()).unwrap()
+    }
+
+    #[test]
+    fn it_listens_on_loopback_for_loopback_names_by_default() {
+        let config = parse(&["--mneme-url", "http://mneme"]);
+        assert_eq!(config.addr, SocketAddr::from(([127, 0, 0, 1], 8080)));
+        assert_eq!(config.allowed_hosts, ["localhost", "127.0.0.1", "[::1]"]);
+        let named = parse(&[
+            "--mneme-url",
+            "http://mneme",
+            "--allowed-hosts",
+            "a.example,b",
+        ]);
+        assert_eq!(named.allowed_hosts, ["a.example", "b"]);
+    }
+
+    #[test]
+    fn the_record_is_named_after_where_it_is_unless_another_name_is_given() {
+        let record = |args: &[&str]| parse(args).record();
+        assert_eq!(record(&["--demo"]), "laurel");
+        assert_eq!(record(&["--mneme-url", "http://mneme:8080"]), "mneme");
+        assert_eq!(
+            record(&["--mneme-url", "https://wiki.example.org/base/"]),
+            "wiki.example.org"
+        );
+        assert_eq!(record(&["--wiki-folder", "/wiki"]), local::host_name());
+        for args in [
+            &["--demo"][..],
+            &["--mneme-url", "http://mneme:8080"],
+            &["--wiki-folder", "/wiki"],
+        ] {
+            let named = [args, &["--record-name", "apollo"]].concat();
+            assert_eq!(record(&named), "apollo", "{args:?}");
+        }
+        let blank = [
+            "atrium",
+            "--viewer",
+            "owner",
+            "--demo",
+            "--record-name",
+            " ",
+        ];
+        assert!(Config::try_parse_from(blank).is_err());
+    }
+
+    #[test]
+    fn the_demo_keeps_its_zone_unless_another_is_named() {
+        assert_eq!(
+            parse(&["--demo"]).zone().iana_name(),
+            Some("Europe/Stockholm")
+        );
+        assert_eq!(
+            parse(&["--demo", "--time-zone", "Asia/Tokyo"])
+                .zone()
+                .iana_name(),
+            Some("Asia/Tokyo")
+        );
+    }
 }

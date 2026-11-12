@@ -13,7 +13,7 @@ const HEAD: &str = "faf510a1fb457f1af5496ca64dea77ed68ddb2f8";
 
 #[tokio::test]
 async fn pages_are_listed_newest_first_with_sort_and_order_links() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki").await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h1"), ["The wiki"]);
@@ -44,7 +44,7 @@ async fn pages_are_listed_newest_first_with_sort_and_order_links() {
 
 #[tokio::test]
 async fn a_chosen_sort_reaches_mneme_and_is_marked() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki?sort=words&order=asc").await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "th[aria-sort=ascending]"), ["Words"]);
@@ -59,11 +59,11 @@ async fn a_chosen_sort_reaches_mneme_and_is_marked() {
 
 #[tokio::test]
 async fn home_opens_with_the_sentence_the_map_and_the_tiles() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let home = atrium.get("/").await;
     assert_eq!(home.status, 200);
     let sentence = texts(&home.body, "p.sentence")[0].clone();
-    assert!(sentence.contains("blackbox is blocked"), "{sentence}");
+    assert!(sentence.contains("ironbark is blocked"), "{sentence}");
     assert!(
         sentence.contains("Two questions are waiting for you."),
         "{sentence}"
@@ -82,18 +82,18 @@ async fn home_opens_with_the_sentence_the_map_and_the_tiles() {
     );
     assert_eq!(
         attrs(&home.body, ".map-svg .m", "data-m"),
-        ["apollo", "blackbox", "aeolus"]
+        ["laurel", "ironbark", "willow"]
     );
     assert_eq!(
         attrs(&home.body, ".dock-card", "data-want"),
         ["2", "0", "2"],
-        "blackbox is blocked, aeolus has not been seen"
+        "ironbark is blocked, willow has not been seen"
     );
 }
 
 #[tokio::test]
 async fn a_page_shows_its_text_windows_and_recent_versions() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get(ALPHA).await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h1"), ["Alpha"]);
@@ -120,7 +120,7 @@ async fn a_page_shows_its_text_windows_and_recent_versions() {
 
 #[tokio::test]
 async fn an_unknown_page_is_not_found() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     assert_eq!(atrium.get("/wiki/page/0123456789abcdef").await.status, 404);
     assert_eq!(atrium.get("/wiki/page/not-an-id").await.status, 404);
     assert!(
@@ -135,7 +135,7 @@ async fn an_unknown_page_is_not_found() {
 
 #[tokio::test]
 async fn the_history_lists_every_event() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get(&format!("{ALPHA}/history")).await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h1"), ["History of Alpha"]);
@@ -152,7 +152,7 @@ async fn the_history_lists_every_event() {
 
 #[tokio::test]
 async fn a_version_shows_the_text_at_that_commit() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get(&format!("{ALPHA}/at/{HEAD}")).await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h1"), ["Alpha"]);
@@ -170,7 +170,7 @@ async fn a_version_shows_the_text_at_that_commit() {
 
 #[tokio::test]
 async fn a_diff_marks_added_and_removed_words() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get(&format!("{ALPHA}/diff?to={HEAD}")).await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h1"), ["What changed"]);
@@ -198,7 +198,7 @@ async fn a_diff_marks_added_and_removed_words() {
 
 #[tokio::test]
 async fn recent_changes_are_grouped_by_day_with_their_overlaps() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/changes").await;
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h2.day").len(), 1);
@@ -225,7 +225,7 @@ async fn recent_changes_are_grouped_by_day_with_their_overlaps() {
 
 #[tokio::test]
 async fn a_search_shows_snippets_with_the_hits_marked() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/search?q=harbours").await;
     assert_eq!(reply.status, 200);
     assert_eq!(
@@ -239,7 +239,7 @@ async fn a_search_shows_snippets_with_the_hits_marked() {
 
 #[tokio::test]
 async fn search_sort_and_filters_reach_mneme_from_a_plain_form() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium
         .get("/wiki/search?q=boats&sort=updated&changed=30&vmin=2")
         .await;
@@ -258,7 +258,7 @@ async fn search_sort_and_filters_reach_mneme_from_a_plain_form() {
 
 #[tokio::test]
 async fn an_empty_search_shows_the_form_and_searches_nothing() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/search?q=&sort=&changed=").await;
     assert_eq!(reply.status, 200);
     assert_eq!(attrs(&reply.body, "input[name=q]", "value"), [""]);
@@ -277,7 +277,7 @@ async fn an_empty_search_shows_the_form_and_searches_nothing() {
 
 #[tokio::test]
 async fn a_search_mneme_cannot_read_says_why() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/search?q=%22open").await;
     assert_eq!(reply.status, 400);
     assert!(reply.body.contains("open quote"), "{}", reply.body);
@@ -285,35 +285,36 @@ async fn a_search_mneme_cannot_read_says_why() {
 
 #[tokio::test]
 async fn machines_show_their_state_and_what_they_left_out() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/machines").await;
     assert_eq!(reply.status, 200);
     assert_eq!(
         texts(&reply.body, "section.mach h2"),
-        ["aeolus", "blackbox", "cassia", "apollo"]
+        ["willow", "ironbark", "cassia", "127.0.0.1"],
+        "the record is named after the host Atrium reaches Mneme at"
     );
     assert_eq!(
         attrs(&reply.body, "section.mach", "data-want"),
         ["2", "2", "2", "0"]
     );
     assert_eq!(
-        texts(&reply.body, "#blackbox .why"),
+        texts(&reply.body, "#ironbark .why"),
         ["a merge is in progress"]
     );
     assert_eq!(
-        texts(&reply.body, "#blackbox .skips code"),
+        texts(&reply.body, "#ironbark .skips code"),
         ["notes/scan.pdf"]
     );
     assert_eq!(
-        texts(&reply.body, "#blackbox .skips span"),
+        texts(&reply.body, "#ironbark .skips span"),
         ["A file over 10 MiB."]
     );
-    assert_eq!(texts(&reply.body, "#aeolus .word"), ["not reported"]);
+    assert_eq!(texts(&reply.body, "#willow .word"), ["not reported"]);
 }
 
 #[tokio::test]
 async fn a_link_by_file_path_leads_to_the_page_id() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let cases = [
         ("/wiki/greek/alpha.md", ALPHA),
         (
@@ -344,7 +345,7 @@ async fn a_link_by_file_path_leads_to_the_page_id() {
 
 #[tokio::test]
 async fn older_changes_are_the_days_before_the_time_the_address_names() {
-    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "owner"]).await;
     // Monday 9 November 2026 at midnight in Stockholm. The offset is what a Mneme without
     // `before` would page by, and would show Tuesday again.
     let reply = atrium
@@ -363,7 +364,7 @@ async fn older_changes_are_the_days_before_the_time_the_address_names() {
 
 #[tokio::test]
 async fn a_mneme_that_does_not_page_by_time_pages_by_offset() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/changes?before=1788225000&offset=5").await;
     assert_eq!(reply.status, 200);
     let asked = atrium.mneme.requests();
@@ -379,7 +380,7 @@ async fn a_mneme_that_does_not_page_by_time_pages_by_offset() {
 
 #[tokio::test]
 async fn a_path_held_now_by_a_new_page_leads_to_it_not_the_deleted_one() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/notes/deep.md").await;
     assert_eq!(reply.status, 303);
     assert_eq!(
@@ -390,7 +391,7 @@ async fn a_path_held_now_by_a_new_page_leads_to_it_not_the_deleted_one() {
 
 #[tokio::test]
 async fn an_old_path_still_lands_after_a_rename_or_a_deletion() {
-    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "owner"]).await;
     let renamed = atrium.get("/wiki/home/bicycle.md").await;
     assert_eq!(renamed.status, 303);
     let bike = renamed.header("location").unwrap().to_owned();
@@ -405,7 +406,7 @@ async fn an_old_path_still_lands_after_a_rename_or_a_deletion() {
 }
 
 async fn away(stub: Stub) {
-    let atrium = Atrium::start(stub, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(stub, &["--viewer", "owner"]).await;
     for path in ["/wiki", ALPHA, "/wiki/changes", "/wiki/machines"] {
         let reply = atrium.get(path).await;
         assert_eq!(reply.status, 503, "{path}");
@@ -445,7 +446,7 @@ async fn a_failing_mneme_is_away() {
 
 #[tokio::test]
 async fn home_does_not_wait_for_a_slow_mneme() {
-    let atrium = Atrium::start(Stub::Slow(Duration::from_secs(5)), &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Slow(Duration::from_secs(5)), &["--viewer", "owner"]).await;
     let start = std::time::Instant::now();
     let home = atrium.get("/").await;
     let took = start.elapsed();
@@ -460,7 +461,7 @@ async fn home_does_not_wait_for_a_slow_mneme() {
 
 #[tokio::test]
 async fn the_modules_read_the_page_index_and_previews_as_json() {
-    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "owner"]).await;
     let index = atrium.get("/wiki/index.json").await;
     assert_eq!(index.status, 200);
     assert_eq!(index.header("content-type"), Some("application/json"));
@@ -476,7 +477,7 @@ async fn the_modules_read_the_page_index_and_previews_as_json() {
         preview["text"]
             .as_str()
             .unwrap()
-            .starts_with("Only apollo may reach")
+            .starts_with("Only laurel may reach")
     );
     let missing = atrium.get("/wiki/preview.json?href=/wiki/nothing.md").await;
     assert_eq!(missing.status, 404);
@@ -484,7 +485,7 @@ async fn the_modules_read_the_page_index_and_previews_as_json() {
 
 #[tokio::test]
 async fn the_palette_finds_its_pages_at_the_url_the_page_names() {
-    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "owner"]).await;
     let home = atrium.get("/").await.body;
     let named = attrs(&home, "[data-module~=palette]", "data-pages");
     assert_eq!(
@@ -507,7 +508,7 @@ async fn the_palette_finds_its_pages_at_the_url_the_page_names() {
 
 #[tokio::test]
 async fn a_page_names_where_its_links_previews_are_fetched() {
-    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "owner"]).await;
     let pages: serde_json::Value =
         serde_json::from_str(&atrium.get("/wiki/index.json").await.body).unwrap();
     let backups = pages
@@ -538,7 +539,7 @@ async fn a_page_names_where_its_links_previews_are_fetched() {
 
 #[tokio::test]
 async fn the_whole_entrance_plays_once_and_the_next_page_comes_in_short() {
-    let atrium = Atrium::start(Stub::Demo, &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "owner"]).await;
     let first = atrium.get("/").await;
     assert_eq!(attrs(&first.body, "html", "data-entrance"), ["full"]);
     let cookie = first.header("set-cookie").unwrap();
@@ -550,7 +551,7 @@ async fn the_whole_entrance_plays_once_and_the_next_page_comes_in_short() {
 
 #[tokio::test]
 async fn search_results_come_in_the_slots_the_swap_module_replaces() {
-    let atrium = Atrium::tailnet().await;
+    let atrium = Atrium::owner().await;
     let reply = atrium.get("/wiki/search?q=harbours").await;
     assert_eq!(
         attrs(&reply.body, "form[data-module=swap]", "action"),
@@ -559,4 +560,37 @@ async fn search_results_come_in_the_slots_the_swap_module_replaces() {
     assert_eq!(texts(&reply.body, "[data-swap-target] h2").len(), 1);
     assert_eq!(texts(&reply.body, "[data-count]").len(), 1);
     assert_eq!(texts(&reply.body, "template"), Vec::<String>::new());
+}
+
+#[tokio::test]
+async fn the_record_is_called_what_the_owner_names_it_and_only_as_text() {
+    let named = "<i>apollo</i>";
+    let atrium = Atrium::start(
+        Stub::Fixtures,
+        &["--viewer", "owner", "--record-name", named],
+    )
+    .await;
+    let reply = atrium.get("/wiki/machines").await;
+    assert_eq!(reply.status, 200);
+    let page = &reply.body;
+    assert_eq!(texts(page, "#m-laurel"), [named], "the record's section");
+    assert_eq!(texts(page, "#dock-laurel .dk-name"), [named], "its card");
+    assert!(
+        texts(page, ".page-head .sub")[0].contains("<i>apollo</i> holds the record they push to"),
+        "{:?}",
+        texts(page, ".page-head .sub")
+    );
+    assert!(texts(page, "#laurel .why")[0].contains("What Atrium knows of <i>apollo</i> is"));
+    assert!(texts(page, "#map-title")[0].contains("<i>apollo</i> holds the record."));
+    assert!(texts(page, ".foot-note")[0].starts_with("The record on <i>apollo</i>: 5 pages"));
+    assert!(!page.contains("<i>apollo"), "written escaped everywhere");
+    assert!(
+        attrs(page, "[id]", "id")
+            .iter()
+            .chain(&attrs(page, "a[href]", "href"))
+            .all(|value| !value.contains("apollo")),
+        "never an id or an address"
+    );
+    let home = atrium.get("/").await.body;
+    assert_eq!(texts(&home, "#dock-laurel .dk-name"), [named], "home's map");
 }

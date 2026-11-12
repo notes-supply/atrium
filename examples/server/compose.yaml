@@ -1,0 +1,42 @@
+# Mneme and Atrium on one small always-on machine, for `podman compose` or `docker compose`.
+# Writers push to Mneme; Atrium reads the wiki from it. Both are published on 127.0.0.1 only,
+# and README.md says how to reach them over a tailnet with `tailscale serve`.
+#
+# The images are published for every commit of main, tagged with the commit. Name the two
+# commits, and the allowed host names, the time zone and the record's name, in a .env file
+# beside this one.
+
+services:
+  mneme:
+    image: ghcr.io/notes-supply/mneme:${MNEME_COMMIT:?name a commit of Mneme's main in MNEME_COMMIT}
+    # The image serves the bare repository in /data with the tokens in /etc/mneme on port 8080.
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    volumes:
+      - mneme:/data
+      - ./tokens.json:/etc/mneme/tokens.json:ro,Z
+    ports:
+      - 127.0.0.1:8081:8080
+
+  atrium:
+    image: ghcr.io/notes-supply/atrium:${ATRIUM_COMMIT:?name a commit of Atrium's main in ATRIUM_COMMIT}
+    restart: unless-stopped
+    user: "65532:65532"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      ATRIUM_VIEWER: owner
+      ATRIUM_MNEME_URL: http://mneme:8080
+      ATRIUM_ALLOWED_HOSTS: ${ATRIUM_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
+      ATRIUM_TIME_ZONE: ${ATRIUM_TIME_ZONE:-UTC}
+      ATRIUM_RECORD_NAME: ${ATRIUM_RECORD_NAME:-mneme}
+    depends_on: [mneme]
+    ports:
+      - 127.0.0.1:8080:8080
+
+volumes:
+  mneme:

@@ -100,7 +100,7 @@ jobs:
           [ "$CHECKS" = success ] && [ "$BROWSER" = success ]
 
   # A push to main deploys once the gate passed on that commit: release.yml publishes the image
-  # and the signed manifests that Flux on Apollo follows.
+  # and the signed manifests that a cluster running Flux follows.
   release:
     name: release
     needs: [gate, image]

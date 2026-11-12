@@ -21,7 +21,7 @@ const GRACE: Duration = Duration::from_millis(100);
 /// Every feature, in the order the navigation lists them.
 pub fn registry(config: &Config, mneme_url: &str) -> Result<Vec<Arc<dyn Feature>>> {
     let timeout = Duration::from_millis(config.mneme_timeout_ms);
-    let wiki = Wiki::new(mneme_url, timeout)?;
+    let wiki = Wiki::new(mneme_url, timeout, &config.record())?;
     if config.demo == Some(Demo::Away) {
         wiki.mneme().heard_at(atrium_wiki::demo::LAST_HEARD);
     }
@@ -99,14 +99,8 @@ mod tests {
 
     fn config() -> Config {
         use clap::Parser;
-        Config::try_parse_from([
-            "atrium",
-            "--viewer",
-            "tailnet",
-            "--mneme-url",
-            "http://mneme",
-        ])
-        .unwrap()
+        Config::try_parse_from(["atrium", "--viewer", "owner", "--mneme-url", "http://mneme"])
+            .unwrap()
     }
 
     #[test]
@@ -117,10 +111,7 @@ mod tests {
 
     #[test]
     fn navigation_addresses_are_unique() {
-        let site = Site::new(
-            registry(&config(), "http://mneme").unwrap(),
-            Viewer::Tailnet,
-        );
+        let site = Site::new(registry(&config(), "http://mneme").unwrap(), Viewer::Owner);
         assert_eq!(unique(site.nav().iter().map(|entry| entry.href)), Ok(()));
     }
 }

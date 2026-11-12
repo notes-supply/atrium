@@ -22,12 +22,12 @@ rust = { version = "nightly-2026-10-28", profile = "minimal", components = "rust
 [tasks.demo]
 description = "Run Atrium on 127.0.0.1:8080 with the design's invented wiki, no Mneme needed"
 depends = ["build:wasm"]
-run = "cargo run -- --demo --addr 127.0.0.1:8080 --viewer tailnet --allowed-hosts localhost,127.0.0.1"
+run = "cargo run -- --demo --viewer owner"
 
 [tasks.dev]
-description = "Run Atrium for the tailnet on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
+description = "Run Atrium for the owner on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
 depends = ["build:wasm"]
-run = "cargo run -- --addr 127.0.0.1:8080 --viewer tailnet --allowed-hosts localhost,127.0.0.1 --mneme-url ${ATRIUM_MNEME_URL:-http://127.0.0.1:8081}"
+run = "cargo run -- --viewer owner --mneme-url ${ATRIUM_MNEME_URL:-http://127.0.0.1:8081}"
 
 [tasks.fmt]
 description = "Format the Rust sources"
@@ -92,7 +92,7 @@ wait_for = ["check:clippy"]
 run = "cargo nextest run --locked --workspace --no-tests=fail"
 
 [tasks."test:mneme"]
-description = "Run the test against a real mneme serve; ATRIUM_MNEME_BIN names the binary"
+description = "Run the tests against a real mneme serve, and the serve --folder that --wiki-folder starts; ATRIUM_MNEME_BIN names the binary, mneme on PATH by default"
 depends = ["build:wasm"]
 run = "cargo nextest run --locked --workspace --run-ignored only --no-tests=fail"
 
@@ -146,9 +146,13 @@ echo "$tag"
 {% endraw %}"""
 
 [tasks.parity]
-description = "Compare each route of atrium --demo with the prototype at 1440 and 390 px, day and night; scripts off, or on under reduced motion with --scripts (needs Docker)"
+description = "Compare each route of atrium --demo with the prototype in PROTOTYPE at 1440 and 390 px, day and night; scripts off, or on under reduced motion with --scripts (needs Docker)"
 depends = ["build:wasm"]
-run = "PROTOTYPE=\"${PROTOTYPE:-/home/blackbox/work/atrium-concepts/atrium}\" tools/browser.sh node tools/check/parity.mjs"
+run = """
+set -eu
+[ -n "${PROTOTYPE:-}" ] || { echo "parity: set PROTOTYPE to the folder of the design's prototype" >&2; exit 1; }
+tools/browser.sh node tools/check/parity.mjs
+"""
 
 [tasks.capture]
 description = "Record a short visit to atrium --demo and screenshot home, a page and the machines at 1440 and 390 px, day and night, into target/check/final (needs Docker)"

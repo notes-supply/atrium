@@ -473,8 +473,8 @@ mod tests {
     #[test]
     fn a_preview_is_the_first_paragraphs_words() {
         assert_eq!(
-            first_paragraph("# Title\n\nOnly [apollo](a.md) may *reach* `tank`.\n\nMore."),
-            "Only apollo may reach tank."
+            first_paragraph("# Title\n\nOnly [laurel](a.md) may *reach* `tank`.\n\nMore."),
+            "Only laurel may reach tank."
         );
     }
 

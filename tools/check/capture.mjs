@@ -65,7 +65,7 @@ await page.keyboard.type('corne', { delay: 140 });
 await page.waitForTimeout(1200);
 await page.keyboard.press('Escape');
 await page.waitForTimeout(400);
-await page.locator('.tiles a[data-carry]', { hasText: 'Restic backups on apollo' }).first().click();
+await page.locator('.tiles a[data-carry]', { hasText: 'Restic backups on laurel' }).first().click();
 await settled(page);
 await page.waitForTimeout(2200);
 await page.locator('.doc-meta a', { hasText: 'What changed' }).click();

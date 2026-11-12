@@ -548,6 +548,7 @@ pub struct Mneme {
     base: String,
     status: Arc<Mutex<Option<Status>>>,
     heard: Arc<AtomicI64>,
+    record: Arc<str>,
 }
 
 fn now() -> i64 {
@@ -574,7 +575,25 @@ impl Mneme {
             base: base.trim_end_matches('/').to_owned(),
             status: Arc::default(),
             heard: Arc::default(),
+            record: Arc::from("Mneme"),
         })
+    }
+
+    /// The same client, with `record` the name the pages give the place that holds the
+    /// record, such as the server this Mneme runs on.
+    #[must_use]
+    pub fn named(self, record: &str) -> Self {
+        Self {
+            record: Arc::from(record),
+            ..self
+        }
+    }
+
+    /// The name the pages give the place that holds the record. It is text the owner
+    /// chose, so it is only ever written escaped, never into an id or an address.
+    #[must_use]
+    pub fn record(&self) -> &str {
+        &self.record
     }
 
     /// The newest status any call has read.

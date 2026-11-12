@@ -54,12 +54,8 @@ spec:
           env:
             - name: ATRIUM_VIEWER
               value: tailnet
-            - name: ATRIUM_ALLOWED_HOSTS
-              value: atrium.ts.notes.supply
             - name: ATRIUM_MNEME_URL
               value: http://mneme:8080
-            - name: ATRIUM_TIME_ZONE
-              value: Europe/Stockholm
           readinessProbe:
             httpGet:
               path: /healthz
@@ -70,7 +66,7 @@ spec:
               path: /healthz
               port: http
             periodSeconds: 20
-          # Traefik keeps sending to a stopping pod until it sees the endpoint go.
+          # The proxy in front keeps sending to a stopping pod until it sees the endpoint go.
           lifecycle:
             preStop:
               sleep:

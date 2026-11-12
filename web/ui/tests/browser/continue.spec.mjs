@@ -17,7 +17,7 @@ test('continue: a page remembers where you stopped, and home offers it', async (
   await open(page, 'index');
   const tile = page.locator('.tile.resume');
   await expect(tile).toBeVisible();
-  await expect(tile.locator('.resume-title a')).toHaveText('Restic backups on apollo');
+  await expect(tile.locator('.resume-title a')).toHaveText('Restic backups on laurel');
   await expect(tile.locator('.resume-title a')).toHaveAttribute('href', RESTIC);
   await expect(tile.locator('.resume-where')).toHaveText('You stopped at Restore drill, November, just now.');
   await expect(tile.locator('.resume-where a')).toHaveAttribute('href', `${RESTIC}#restore-drill-november`);

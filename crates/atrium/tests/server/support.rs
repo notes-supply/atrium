@@ -26,9 +26,9 @@ impl Reply {
 }
 
 impl Atrium {
-    /// A tailnet listener in front of Mneme's example responses.
-    pub async fn tailnet() -> Self {
-        Self::start(Stub::Fixtures, &["--viewer", "tailnet"]).await
+    /// A listener for the owner in front of Mneme's example responses.
+    pub async fn owner() -> Self {
+        Self::start(Stub::Fixtures, &["--viewer", "owner"]).await
     }
 
     /// A listener with `args` added to the flags, in front of `mneme`.
@@ -39,6 +39,7 @@ impl Atrium {
 
     /// A listener with `args` added to the flags, in front of a running Mneme.
     pub async fn serve(mneme: Running, args: &[&str]) -> Self {
+        // The demo's and the examples' times read as the tests expect them in Stockholm.
         let fixed = [
             "atrium",
             "--addr",
@@ -47,6 +48,8 @@ impl Atrium {
             "127.0.0.1",
             "--mneme-timeout-ms",
             "1000",
+            "--time-zone",
+            "Europe/Stockholm",
             "--mneme-url",
             &mneme.base,
         ];

@@ -95,7 +95,7 @@ test('home has the same list inline, without the settings, under the command lin
   await expect(input).toHaveAttribute('aria-expanded', 'true');
   await expect(list.locator('.pal-group')).toHaveText(['Sections', 'Pages']);
   await input.fill('restic');
-  await expect(list.locator('[role=option]').first()).toContainText('Restic backups on apollo');
+  await expect(list.locator('[role=option]').first()).toContainText('Restic backups on laurel');
   await page.keyboard.press('Escape');
   await expect(input).toHaveValue('');
   await page.keyboard.press('Escape');

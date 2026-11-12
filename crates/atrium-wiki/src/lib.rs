@@ -24,23 +24,21 @@ use maud::{Markup, html};
 
 use crate::mneme::Mneme;
 
-/// The place that holds the record, as the map draws it.
-pub const RECORD: &str = "apollo";
-
 /// The wiki, read from the Mneme at one URL.
 pub struct Wiki {
     mneme: Mneme,
 }
 
 impl Wiki {
-    /// A wiki read from the Mneme at `url`, giving up on each call after `timeout`.
+    /// A wiki read from the Mneme at `url`, giving up on each call after `timeout`, whose
+    /// pages call the place that holds the record `record`.
     ///
     /// # Errors
     ///
     /// Fails when the HTTP client cannot be built.
-    pub fn new(url: &str, timeout: Duration) -> Result<Self, reqwest::Error> {
+    pub fn new(url: &str, timeout: Duration, record: &str) -> Result<Self, reqwest::Error> {
         Ok(Self {
-            mneme: Mneme::new(url, timeout)?,
+            mneme: Mneme::new(url, timeout)?.named(record),
         })
     }
 
@@ -103,7 +101,7 @@ impl Feature for Wiki {
     fn footnote(&self, local: &Local) -> Option<Markup> {
         let status = self.mneme.known_status()?;
         Some(html! {
-            "The record on " (RECORD) ": " (atrium_ui::words::number(status.pages)) " pages, "
+            "The record on " (self.mneme.record()) ": " (atrium_ui::words::number(status.pages)) " pages, "
             (atrium_ui::words::number(status.commits)) " commits"
             @if let Some(newest) = status.head_time { ", the newest " (local.when_long(newest)) }
             "."

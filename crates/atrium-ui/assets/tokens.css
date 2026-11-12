@@ -82,8 +82,8 @@
   --shadow: light-dark(oklch(.205 .012 255), oklch(0 0 0));
   --old: light-dark(oklch(.5 .12 60), oklch(.82 .11 75));
 
-  /* the places: blackbox graphite, apollo gold, aeolus sky, the record and
-     the folders paper. t is a top face, y the left face, x the right face,
+  /* the places: bb the workstation graphite, ap the cluster gold, ae the low
+     machine sky, the record and the folders paper. t is a top face, y the left face, x the right face,
      d the colour of that tone's dither dots. */
   --st-t: light-dark(#f1f2ee, #2a3036); --st-y: light-dark(#dcdfd7, #22272c); --st-x: light-dark(#c6cac0, #1b1f23); --st-d: light-dark(#a3a99f, #4a535c);
   --bb-t: light-dark(#5b636d, #59626c); --bb-y: light-dark(#3b4149, #3f464e); --bb-x: light-dark(#272b31, #2b3036); --bb-d: light-dark(#3b4149, #8a949e);
