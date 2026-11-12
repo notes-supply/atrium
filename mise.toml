@@ -92,7 +92,7 @@ wait_for = ["check:clippy"]
 run = "cargo nextest run --locked --workspace --no-tests=fail"
 
 [tasks."test:mneme"]
-description = "Run the test against a real mneme serve; ATRIUM_MNEME_BIN names the binary"
+description = "Run the tests against a real mneme serve, and the serve --folder that --wiki-folder starts; ATRIUM_MNEME_BIN names the binary, mneme on PATH by default"
 depends = ["build:wasm"]
 run = "cargo nextest run --locked --workspace --run-ignored only --no-tests=fail"
 

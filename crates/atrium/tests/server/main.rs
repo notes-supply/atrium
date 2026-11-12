@@ -5,6 +5,7 @@
 
 mod access;
 mod html;
+mod local;
 mod output;
 mod process;
 mod real;

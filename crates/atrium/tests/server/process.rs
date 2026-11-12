@@ -96,6 +96,11 @@ impl Binary {
         }
     }
 
+    /// Every line left until the binary closes its standard error.
+    pub fn rest(&self) -> Vec<String> {
+        std::iter::from_fn(|| self.line()).collect()
+    }
+
     pub fn terminate(&self) {
         signal("TERM", self.pid());
     }
@@ -117,6 +122,40 @@ impl Drop for Binary {
     fn drop(&mut self) {
         let _ = self.child.kill();
         let _ = self.child.wait();
+    }
+}
+
+/// The processes that `pid` started and that have not been waited for.
+pub fn children(pid: u32) -> Vec<u32> {
+    let mut found = Vec::new();
+    for task in std::fs::read_dir(format!("/proc/{pid}/task")).unwrap() {
+        let listed = std::fs::read_to_string(task.unwrap().path().join("children"));
+        found.extend(
+            listed
+                .unwrap_or_default()
+                .split_whitespace()
+                .map(|child| child.parse::<u32>().unwrap()),
+        );
+    }
+    found
+}
+
+/// Whether `pid` has stopped within 10 s, gone or a zombie.
+pub fn stops(pid: u32) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        // The state follows the command's name, which is in parentheses.
+        let running = std::fs::read_to_string(format!("/proc/{pid}/stat")).is_ok_and(|stat| {
+            stat.rsplit_once(')')
+                .is_some_and(|(_, rest)| !rest.trim_start().starts_with('Z'))
+        });
+        if !running {
+            return true;
+        }
+        if Instant::now() > deadline {
+            return false;
+        }
+        thread::sleep(Duration::from_millis(20));
     }
 }
 

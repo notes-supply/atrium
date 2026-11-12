@@ -1,6 +1,7 @@
 //! Atrium in front of a real `mneme serve`, with a synthetic wiki pushed through the stock
-//! `git` command. Ignored in the gate, which needs no Mneme built; `mise run test:mneme` runs
-//! it with the binary named by `ATRIUM_MNEME_BIN`.
+//! `git` command, and in front of the `mneme serve --folder` it starts for a wiki folder.
+//! Ignored in the gate, which needs no Mneme built; `mise run test:mneme` runs them with the
+//! binary named by `ATRIUM_MNEME_BIN`, or `mneme` on `PATH`.
 
 use std::fmt::Write as _;
 use std::fs;
@@ -17,6 +18,7 @@ use sha2::{Digest, Sha256};
 use tempfile::TempDir;
 
 use crate::html::{attrs, rows, texts};
+use crate::process::{Binary, children, stops};
 use crate::support::Atrium;
 
 const TOKEN: &str = "test-token-of-ironbark";
@@ -34,6 +36,11 @@ fn isolated<'a>(command: &'a mut Command, home: &Path) -> &'a mut Command {
         .env("GIT_AUTHOR_EMAIL", "writer@example.invalid")
         .env("GIT_COMMITTER_NAME", "Writer")
         .env("GIT_COMMITTER_EMAIL", "writer@example.invalid")
+}
+
+/// The Mneme binary to test against.
+fn mneme_binary() -> String {
+    std::env::var("ATRIUM_MNEME_BIN").unwrap_or_else(|_| "mneme".to_owned())
 }
 
 struct Mneme {
@@ -249,15 +256,13 @@ async fn setup(binary: &str) -> (Atrium, Setup) {
 }
 
 #[tokio::test]
-#[ignore = "needs a mneme binary in ATRIUM_MNEME_BIN: mise run test:mneme"]
+#[ignore = "needs a mneme binary, in ATRIUM_MNEME_BIN or on PATH: mise run test:mneme"]
 #[expect(
     clippy::too_many_lines,
     reason = "one walk through every route, which its output reads as"
 )]
 async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
-    let binary = std::env::var("ATRIUM_MNEME_BIN")
-        .unwrap_or_else(|_| panic!("set ATRIUM_MNEME_BIN to a mneme binary"));
-    let (atrium, _setup) = setup(&binary).await;
+    let (atrium, _setup) = setup(&mneme_binary()).await;
 
     let say = |what: &str, lines: Vec<String>| {
         println!("── {what}");
@@ -419,4 +424,102 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
         shown.iter().all(|day| day.as_str() < days[1].as_str()),
         "{shown:?}"
     );
+}
+
+/// The titles the wiki's list shows, sorted.
+async fn titles(base: &str) -> Vec<String> {
+    let list = reqwest::get(format!("{base}/wiki"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    let mut titles = texts(&list, "tbody a.ttl");
+    titles.sort();
+    titles
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore = "needs a mneme binary with serve --folder, in ATRIUM_MNEME_BIN or on PATH: mise run test:mneme"]
+async fn atrium_reads_a_wiki_folder_through_a_real_mneme_serve_folder() {
+    let binary = mneme_binary();
+    let help = Command::new(&binary)
+        .args(["serve", "--help"])
+        .output()
+        .unwrap_or_else(|error| panic!("{binary}: {error}"));
+    assert!(
+        String::from_utf8_lossy(&help.stdout).contains("--folder"),
+        "{binary} has no `serve --folder`, which --wiki-folder runs: name a Mneme that has it \
+         in ATRIUM_MNEME_BIN"
+    );
+    let home = TempDir::new().unwrap();
+    fs::create_dir(home.path().join("xdg")).unwrap();
+    fs::write(home.path().join("gitconfig"), "").unwrap();
+    let folder = TempDir::new().unwrap();
+    let work = Work {
+        dir: folder.path(),
+        home: home.path(),
+    };
+    let now = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs(),
+    )
+    .unwrap();
+    write_wiki(&work, now);
+
+    let path = |path: &Path| path.to_str().unwrap().to_owned();
+    let (xdg, gitconfig) = (
+        path(&home.path().join("xdg")),
+        path(&home.path().join("gitconfig")),
+    );
+    let env = [
+        ("HOME", path(home.path())),
+        ("XDG_CONFIG_HOME", xdg),
+        ("GIT_CONFIG_GLOBAL", gitconfig),
+        ("GIT_CONFIG_NOSYSTEM", "1".to_owned()),
+    ];
+    let env: Vec<(&str, &str)> = env
+        .iter()
+        .map(|(name, value)| (*name, value.as_str()))
+        .collect();
+    let wiki = path(folder.path());
+    let mut atrium = Binary::start(
+        &[
+            "--wiki-folder",
+            &wiki,
+            "--mneme-bin",
+            &binary,
+            "--addr",
+            "127.0.0.1:0",
+        ],
+        &env,
+    );
+    let base = format!("http://{}", atrium.listening());
+    assert_eq!(titles(&base).await, ["Alpha", "Deep", "Home"]);
+    let search = reqwest::get(format!("{base}/wiki/search?q=harbour*"))
+        .await
+        .unwrap()
+        .text()
+        .await
+        .unwrap();
+    assert_eq!(texts(&search, ".result-list h3"), ["Alpha"]);
+    let machines = reqwest::get(format!("{base}/wiki/machines")).await.unwrap();
+    assert_eq!(machines.status(), 200);
+
+    // A commit on main after Atrium started shows up without a restart.
+    work.write("gamma.md", "# Gamma\n\nWritten while Atrium ran.\n");
+    work.commit("Add gamma", now);
+    let deadline = Instant::now() + Duration::from_secs(30);
+    while !titles(&base).await.contains(&"Gamma".to_owned()) {
+        assert!(Instant::now() < deadline, "the new page never showed");
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+
+    let mneme = children(atrium.pid());
+    assert_eq!(mneme.len(), 1, "{mneme:?}");
+    atrium.terminate();
+    assert!(atrium.exit().success(), "exits 0 on SIGTERM");
+    assert!(stops(mneme[0]), "its Mneme stops with it");
 }
