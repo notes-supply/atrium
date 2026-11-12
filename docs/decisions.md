@@ -95,6 +95,11 @@ Measured with `mise run bench:light`: `/wiki` at 1440 by 900 without WebGL, so n
 - **`--wiki-folder` refuses an `--addr` that is not loopback,** and its viewer defaults to `owner`, since every page shows the whole wiki and there is no login. Sharing it goes through a proxy on the same machine, such as `tailscale serve`, with the proxy's host name in `--allowed-hosts`.
 - **The tests' Mneme is a shell script** that records its arguments and says it listens where a stub of Mneme's example responses does. A helper binary would be one more target that `cargo install` installs.
 
+## The server example
+
+- **`examples/server/compose.yaml` runs the published images,** which CI tags with the commit of main they were built from, so the example names the two commits rather than a `latest` that does not exist. Both containers run as in `deploy/`: UID 65532, a read-only root, every capability dropped and no new privileges, published on 127.0.0.1 only.
+- **On a tailnet, `tailscale serve` serves Atrium at `/` and only Mneme's `/git` beside it,** so the writers push through the same name and Mneme's reading API, which has no login, stays on the machine. Tailscale's documentation does not say what `--set-path` does to the path; its source does: the proxy handler strips the mount point (`ipn/ipnlocal/serve.go`, "Trim the mount point from the URL path before proxying", #6571), the target keeps its own path (`ipn.ExpandProxyTargetValue`), and the two are joined, so `--set-path /git http://127.0.0.1:8081/git` hands `/git/wiki.git/...` to Mneme unchanged. The proxy also keeps the request's `Host`, which is why the tailnet name goes in `--allowed-hosts`.
+
 ## The image
 
 - **The image builds the server with Rust 1.99.1 stable** in `rust:1.99.1-alpine3.24`, not the gate's pinned nightly. The build was to fetch only crates and base images, and installing the nightly in the builder needs rustup's own servers. Nothing in the server needs nightly. The Wasm module is built by the pinned nightly on the host and copied in, so it is the same file either way.

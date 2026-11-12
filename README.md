@@ -53,6 +53,8 @@ atrium --wiki-folder ~/wiki --allowed-hosts localhost,<machine>.<tailnet>.ts.net
 
 Then open `https://<machine>.<tailnet>.ts.net`. In the unit, uncomment its `Environment=ATRIUM_ALLOWED_HOSTS=` line with that name. Everyone your tailnet lets reach this machine can then read the whole wiki, so check its access rules first. Never use `tailscale funnel` for it: that would put the wiki on the public internet.
 
+For several writers, `examples/server/` runs Mneme and Atrium together on a small always-on machine, with podman or docker compose, and puts them on a tailnet the same way.
+
 ## Run it from a checkout
 
 ```sh
@@ -88,6 +90,7 @@ Logs are JSON lines on standard error, one per request, with the lines of the Mn
 | `tools/browser.sh` | Runs a command in Playwright's image against `atrium --demo`, with the npm packages `package-lock.json` pins. |
 | `tools/check` | The parity check against the prototype. |
 | `contrib/atrium.service` | A systemd user unit for a wiki folder on this machine. |
+| `examples/server` | Mneme and Atrium on one small server, with compose. |
 
 A feature implements `atrium_core::Feature`: an id, a name, its routes, and optionally its access, navigation link, home tiles and palette commands. Access defaults to `Private`, which only the owner sees. The server builds its router, navigation, home page and palette from the registry alone, and one middleware refuses a route to a viewer its feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
 
