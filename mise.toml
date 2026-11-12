@@ -162,7 +162,7 @@ depends = ["build:wasm"]
 run = "tools/browser.sh node tools/check/capture.mjs"
 
 [tasks.screenshots]
-description = "Screenshot atrium --demo for the README into docs/images: home in day and night, a page, a diff and the machines, at 1440 by 900 under reduced motion (needs Docker)"
+description = "Screenshot atrium --demo for the README and docs/screenshots.md into docs/images: home in day and night, a page, a diff and the machines, at 1440 by 900 under reduced motion (needs Docker)"
 depends = ["build:wasm"]
 run = "tools/browser.sh node tools/screenshots.mjs"
 

@@ -8,7 +8,7 @@ CI builds it on every push. Once the gate passes on a commit of `main` that is s
 
 ## Releases
 
-A tag `vX.Y.Z` on a commit of `main` runs `.github/workflows/binaries.yml`. It publishes a GitHub release with a static `atrium` for Linux on x86_64 and aarch64, each built in the image's own build stage on a runner of its architecture, `SHA256SUMS`, and a cosign bundle per binary, signed keyless as that workflow on the tag. Mneme's installer installs the latest release, and the README says how to [verify a download](../README.md#verify-a-download) by hand.
+A tag `vX.Y.Z` on a commit of `main` runs `.github/workflows/binaries.yml`. It publishes a GitHub release with a static `atrium` for Linux on x86_64 and aarch64, each built in the image's own build stage on a runner of its architecture, `SHA256SUMS`, and a cosign bundle per binary, signed keyless as that workflow on the tag. Mneme's installer installs the latest release, and [install.md](install.md#verify-a-download) says how to verify a download by hand.
 
 The same run tags the image CI published for the tag's commit as `X.Y.Z` and `latest`, which `examples/server` runs. Its signature is on its digest, which the new tags name too, so they need none of their own. When CI has published no image for the commit, because the tag came before its gate passed or a newer commit of `main` took its place, the run stops before it publishes anything and says so; rerun it once there is one, or tag a commit that has one.
 

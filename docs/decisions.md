@@ -120,18 +120,18 @@ Measured with `mise run bench:light`: `/wiki` at 1440 by 900 without WebGL, so n
 - **Lists page as the design shows them:** 16 pages, 10 events of a history, five days of changes.
 - **The demo is the same code.** `atrium --demo` starts a stand-in for Mneme in the process, filled with the prototype's content in Mneme's shapes, and holds the clock at the prototype's 09:41. Its week is computed from its own changes, so it is sparser than the prototype's random one.
 
-## The README's screenshots
+## The screenshots
 
 - **They are taken under reduced motion,** in the browser tests' Chromium with WebGL in SwiftShader. The field then skips its entrance, jumps every spring to its target and draws one still frame, with each surface's pull and heat in full, so two runs draw the same pictures. They are not always the same bytes: the theme button's gradient, which Chromium dithers, differed by one level of colour in a few pixels between runs. Holding a moving field with `?perf=full` would have shown the readout, and a frame of a breathing field differs from run to run. The script fails if the field stepped down before the shot.
 - **One width, 1440 by 900, at one pixel per CSS pixel,** as Chromium writes them. They are 100 to 230 KB each. ImageMagick's strongest lossless compression made none smaller, and a palette of 256 colours, a third of the size, would be lossy and one more tool.
-- **Only home has a night variant,** for `<picture>`; the diff is shown at night instead, so the README shows both themes.
+- **Only home has a night variant,** for the README's `<picture>`; the diff is shown at night instead, so the screenshots show both themes. The README shows home alone, and `docs/screenshots.md` the rest.
 
 ## Release binaries
 
 - **A tag `v*` on a commit of main publishes the binaries** (`.github/workflows/binaries.yml`): a static `atrium` for x86_64 and aarch64, `SHA256SUMS`, and a cosign bundle per binary, on a GitHub release. The tag's commit must be on main, which the compare API says without a checkout. The workflow is its own file, so its identity, `binaries.yml@refs/tags/vX.Y.Z`, is apart from the one the cluster verifies for a release of the image.
 - **Each binary comes from the Containerfile's build stage** on a runner of its own architecture, so it is the one that architecture's image carries. Both base images are pinned by the digest of a multi-architecture index, which lists `linux/amd64` and `linux/arm64`, so the same pins serve both. The stage builds for the build machine's own musl target, so it needs no target named.
 - **The Wasm bundles are built once,** on x86_64, the only platform `mise.lock` pins the nightly and the Wasm tools for, and handed to both builds as an artifact. A `.wasm` is the same file wherever it is built.
-- **The publish job verifies each bundle it signs** with the identity the README gives, so a release whose bundles do not verify is never created.
+- **The publish job verifies each bundle it signs** with the identity `docs/install.md` gives, so a release whose bundles do not verify is never created.
 - **A tag `vX.Y.Z` also tags the image** that CI published for its commit, `ghcr.io/notes-supply/atrium:<commit>`, as `X.Y.Z` and `latest`, with crane, by the digest it found. The release workflow signed that digest, and a tag does not change it, so the tag needs no signature of its own. It runs before the publish job, so a tag whose commit has no image publishes nothing and says why: CI publishes an image only once the gate passed on a commit that is still main's head, so a tag pushed sooner needs its run rerun. Another tag on `v*`, such as a pre-release, leaves the image's tags alone.
 
 ## Deployment

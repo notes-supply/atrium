@@ -162,8 +162,8 @@ jobs:
             echo "$newest is newer than $GITHUB_REF_NAME, so latest stays where it is"
           fi
 
-  # Signs each binary keyless as this workflow on the tag, checks the signature as the README
-  # tells a reader to, and publishes the release, once the image has its tags.
+  # Signs each binary keyless as this workflow on the tag, checks the signature as
+  # docs/install.md tells a reader to, and publishes the release, once the image has its tags.
   publish:
     name: publish
     needs: [build, image]
