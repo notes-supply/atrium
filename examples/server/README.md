@@ -13,7 +13,7 @@ ATRIUM_RECORD_NAME=$(hostname -s)
 EOF
 ```
 
-`ATRIUM_TIME_ZONE` is the zone the pages show times in, UTC when it is left out. `ATRIUM_RECORD_NAME` is what Atrium calls this server, which holds the record; `mneme` when it is left out. Both images are the latest release; `MNEME_VERSION=0.1.0` or `ATRIUM_VERSION=0.1.0` names another.
+`ATRIUM_TIME_ZONE` is the zone the pages show times in, UTC when it is left out. `ATRIUM_RECORD_NAME` is what Atrium calls this server, which holds the record; `mneme` when it is left out. Both images are the latest release; `MNEME_VERSION=0.1.1` or `ATRIUM_VERSION=0.1.1` names another, from 0.1.1 on.
 
 ## Make the tokens
 
