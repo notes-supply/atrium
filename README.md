@@ -78,7 +78,7 @@ The gate builds the Wasm bundles and holds them to their size budgets, checks fo
 
 `mise run test:browser` drives every browser module, every route at 1440 and 390 px in day and night, and axe with scripts on and off, in Chromium against `atrium --demo`. `mise run axe` runs only axe. CI runs the browser tests in a job of their own, and `gate` passes only when both jobs did.
 
-`mise run parity` screenshots every route of the demo beside the prototype page it stands for, at 1440 and 390 px in day and night, and reports the share of differing pixels: scripts off, or with `-- --scripts`, scripts on under reduced motion. It writes to `target/check`. Set `PROTOTYPE` where the prototype is not at its default.
+`mise run parity` screenshots every route of the demo beside the prototype page it stands for, at 1440 and 390 px in day and night, and reports the share of differing pixels: scripts off, or with `-- --scripts`, scripts on under reduced motion. It writes to `target/check`. `PROTOTYPE` must name the prototype's folder.
 
 `mise run capture` records a short visit to the demo and screenshots home, a page and the machines at both widths in day and night, into `target/check/final`.
 

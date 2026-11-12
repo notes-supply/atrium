@@ -146,9 +146,13 @@ echo "$tag"
 {% endraw %}"""
 
 [tasks.parity]
-description = "Compare each route of atrium --demo with the prototype at 1440 and 390 px, day and night; scripts off, or on under reduced motion with --scripts (needs Docker)"
+description = "Compare each route of atrium --demo with the prototype in PROTOTYPE at 1440 and 390 px, day and night; scripts off, or on under reduced motion with --scripts (needs Docker)"
 depends = ["build:wasm"]
-run = "PROTOTYPE=\"${PROTOTYPE:-/home/blackbox/work/atrium-concepts/atrium}\" tools/browser.sh node tools/check/parity.mjs"
+run = """
+set -eu
+[ -n "${PROTOTYPE:-}" ] || { echo "parity: set PROTOTYPE to the folder of the design's prototype" >&2; exit 1; }
+tools/browser.sh node tools/check/parity.mjs
+"""
 
 [tasks.capture]
 description = "Record a short visit to atrium --demo and screenshot home, a page and the machines at 1440 and 390 px, day and night, into target/check/final (needs Docker)"
