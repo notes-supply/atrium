@@ -19,6 +19,15 @@ use serde_json::{Value, json};
 
 use crate::stub::{self, Stub};
 
+/// The demo's time zone, which its clock and every time in its content are written in.
+pub const ZONE: &str = "Europe/Stockholm";
+
+/// The demo's time zone. Its clock reads 09:41 there, and its light is that hour's.
+#[must_use]
+pub fn zone() -> TimeZone {
+    TimeZone::get(ZONE).unwrap_or(TimeZone::UTC)
+}
+
 /// The demo's now: Wednesday 11 November 2026 at 09:41 in Stockholm.
 pub const NOW: Timestamp = Timestamp::constant(1_794_386_460, 0);
 /// The demo reader's last visit, at 07:48.
@@ -54,7 +63,7 @@ fn at(local: &str) -> i64 {
     local
         .parse::<DateTime>()
         .ok()
-        .and_then(|time| time.to_zoned(TimeZone::get("Europe/Stockholm").ok()?).ok())
+        .and_then(|time| time.to_zoned(zone()).ok())
         .map_or(0, |zoned| zoned.timestamp().as_second())
 }
 

@@ -20,7 +20,7 @@ cargo run -- --viewer tailnet --mneme-url http://127.0.0.1:8081 --addr 127.0.0.1
 | `--allowed-hosts` | `ATRIUM_ALLOWED_HOSTS` | Host names requests may name, comma-separated. `localhost` by default. `/healthz` answers any. |
 | `--mneme-url` | `ATRIUM_MNEME_URL` | Mneme's base URL. Required. |
 | `--mneme-timeout-ms` | `ATRIUM_MNEME_TIMEOUT_MS` | How long one call to Mneme may take. 3000 by default. Home waits at most 500 ms. |
-| `--time-zone` | `ATRIUM_TIME_ZONE` | The reader's time zone, for every time shown and the light of the hour. `Europe/Stockholm` by default. |
+| `--time-zone` | `ATRIUM_TIME_ZONE` | The reader's time zone, for every time shown and the light of the hour. The system's by default, from `TZ` or `/etc/localtime`, or UTC when it names none. The demo's is `Europe/Stockholm`. |
 | `--demo` | | Serve the invented wiki instead of a Mneme, `--mneme-url` not needed. |
 
 Logs are JSON lines on standard error, one per request. SIGTERM stops it after the requests in flight.

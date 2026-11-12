@@ -50,9 +50,11 @@ pub struct Config {
     /// How long one call to Mneme may take, in milliseconds.
     #[arg(long, env = "ATRIUM_MNEME_TIMEOUT_MS", default_value_t = 3000)]
     pub mneme_timeout_ms: u64,
-    /// The reader's time zone, for every time a page shows and the light of the hour.
-    #[arg(long, env = "ATRIUM_TIME_ZONE", default_value = "Europe/Stockholm", value_parser = zone)]
-    pub time_zone: TimeZone,
+    /// The reader's time zone, for every time a page shows and the light of the hour. The
+    /// system's by default, from `TZ` or `/etc/localtime`, or UTC when it names none; the
+    /// demo's own is Europe/Stockholm.
+    #[arg(long, env = "ATRIUM_TIME_ZONE", value_parser = zone)]
+    pub time_zone: Option<TimeZone>,
     /// Serve the design's invented wiki instead of a Mneme, with the clock held at its time.
     /// `away` shows the wiki out of reach.
     #[arg(long, value_enum, num_args = 0..=1, default_missing_value = "wiki")]
@@ -70,6 +72,19 @@ pub enum Demo {
 
 fn zone(name: &str) -> Result<TimeZone, String> {
     TimeZone::get(name).map_err(|error| format!("{name}: {error}"))
+}
+
+impl Config {
+    /// The reader's time zone: the one named, or the demo's, whose clock is set in it, or the
+    /// system's, or UTC when the system names none.
+    #[must_use]
+    pub fn zone(&self) -> TimeZone {
+        match (&self.time_zone, self.demo) {
+            (Some(zone), _) => zone.clone(),
+            (None, Some(_)) => atrium_wiki::demo::zone(),
+            (None, None) => TimeZone::try_system().unwrap_or(TimeZone::UTC),
+        }
+    }
 }
 
 /// Serves until SIGTERM or Ctrl-C, then finishes the requests in flight.
@@ -130,7 +145,7 @@ pub async fn app(config: &Config) -> Result<Router> {
     });
     let visits = Visits {
         clock,
-        zone: config.time_zone.clone(),
+        zone: config.zone(),
     };
     let pages = site
         .all()
@@ -169,4 +184,29 @@ fn demo_clock() -> Clock {
 
 async fn not_found(shell: Shell) -> Response {
     shell.not_found()
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::Parser;
+
+    use super::*;
+
+    fn parse(args: &[&str]) -> Config {
+        Config::try_parse_from([&["atrium", "--viewer", "tailnet"], args].concat()).unwrap()
+    }
+
+    #[test]
+    fn the_demo_keeps_its_zone_unless_another_is_named() {
+        assert_eq!(
+            parse(&["--demo"]).zone().iana_name(),
+            Some("Europe/Stockholm")
+        );
+        assert_eq!(
+            parse(&["--demo", "--time-zone", "Asia/Tokyo"])
+                .zone()
+                .iana_name(),
+            Some("Asia/Tokyo")
+        );
+    }
 }
