@@ -120,10 +120,9 @@ jobs:
     permissions:
       contents: read # read mise.toml for crane, and list the version tags
       packages: write # tag the image
-    # One run at a time moves latest, so two releases cannot race for it.
-    concurrency:
-      group: image-tags
-      cancel-in-progress: false
+    # No concurrency group: a group keeps one pending run and cancels the others, which would
+    # skip a release. None is needed, since whether latest moves is read from the tags, not from
+    # the order runs finish in, and a newer tag's own run checks minutes later and moves it.
     env:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       IMAGE: ghcr.io/notes-supply/atrium
