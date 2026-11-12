@@ -118,11 +118,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read # read mise.toml for crane, and list the version tags
+      contents: read # read mise.toml for crane
       packages: write # tag the image
-    # No concurrency group: a group keeps one pending run and cancels the others, which would
-    # skip a release. None is needed, since whether latest moves is read from the tags, not from
-    # the order runs finish in, and a newer tag's own run checks minutes later and moves it.
+    # No concurrency group, so no release's version tag is ever cancelled.
     env:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       IMAGE: ghcr.io/notes-supply/atrium
@@ -134,10 +132,9 @@ jobs:
         with:
           install_args: aqua:google/go-containerregistry
           cache: false
-      - name: Tag the commit's image with the version, and as latest when it is the newest
+      - name: Tag the commit's image with the version
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          GH_TOKEN: ${{ github.token }}
         run: |
           version=${GITHUB_REF_NAME#v}
           if ! printf '%s\n' "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
@@ -151,15 +148,49 @@ jobs:
           fi
           crane tag "$IMAGE@$digest" "$version"
           echo "$IMAGE@$digest is now $IMAGE:$version"
-          # A rerun of an older release, or a fix to an older version, must not move latest back.
-          newest=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
-            --jq '.[].ref | ltrimstr("refs/tags/")' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
-          if [ "$GITHUB_REF_NAME" = "$newest" ]; then
-            crane tag "$IMAGE@$digest" latest
-            echo "$IMAGE@$digest is now $IMAGE:latest"
-          else
-            echo "$newest is newer than $GITHUB_REF_NAME, so latest stays where it is"
-          fi
+
+  # Points latest at the newest version that has an image, whichever release ran this. The
+  # answer is the same for every run, so one run at a time is enough: a run the group cancels
+  # while it waits leaves the work to the run that replaced it, which gives the same answer.
+  latest:
+    name: latest
+    needs: image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # read mise.toml for crane, and list the version tags
+      packages: write # move the latest tag
+    concurrency:
+      group: image-latest
+      cancel-in-progress: false
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      IMAGE: ghcr.io/notes-supply/atrium
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: aqua:google/go-containerregistry
+          cache: false
+      - name: Point latest at the newest version's image
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GITHUB_TOKEN" | crane auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          versions=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | ltrimstr("refs/tags/v")' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -rV)
+          for version in $versions; do
+            if digest=$(crane digest "$IMAGE:$version" 2>/dev/null); then
+              crane tag "$IMAGE@$digest" latest
+              echo "$IMAGE:latest is $IMAGE:$version, $IMAGE@$digest"
+              exit 0
+            fi
+            echo "$IMAGE:$version has no image yet"
+          done
+          echo "No version has an image yet, so latest stays where it is"
 
   # Signs each binary keyless as this workflow on the tag, checks the signature as
   # docs/install.md tells a reader to, and publishes the release, once the image has its tags.
