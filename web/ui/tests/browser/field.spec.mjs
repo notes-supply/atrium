@@ -2,6 +2,10 @@ import { test, expect, open, url } from './test.mjs';
 
 const prototype = `http://127.0.0.1:${process.env.PROTOTYPE_PORT}`;
 
+// SwiftShader draws the field on the CPU, where it steps down from full quality within a
+// second or two. The tests of the full picture hold it there with ?perf=full.
+const FULL = 'perf=full';
+
 // Counts the field's calls for animation frames, from before the page's own scripts run.
 const countFrames = (page) => page.addInitScript(() => {
   window.frames_asked = 0;
@@ -57,9 +61,15 @@ async function sample(page, boxes) {
   }, boxes);
 }
 
+// The heat fades in with the field's entrance, 1.1 s of the page's own time on a first
+// visit, so the sample waits that long, and for frames enough to ease the springs.
 test('field: draws the lattice, finest and in the colour of trouble around what needs you', async ({ page }) => {
-  await open(page, 'index', 'perf');
+  await countFrames(page);
+  await open(page, 'index', FULL);
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
+  const drawn = await page.evaluate(() => performance.now());
+  await page.waitForFunction((drawn) => performance.now() > drawn + 1200, drawn);
+  await keepsAsking(page, 10);
   const needs = await page.locator('.map [data-m=aeolus].dock circle').boundingBox();
   const at = [Math.round(needs.x + needs.width / 2) - 60, Math.round(needs.y + needs.height / 2) - 60, 120, 120];
   const [whole, near, corner] = await sample(page, [at, [0, 0, 160, 60]]);
@@ -72,7 +82,7 @@ test('field: draws the lattice, finest and in the colour of trouble around what 
 test('field: draws one pixel per CSS pixel on a dense screen', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
-  await page.goto(url('wiki'));
+  await page.goto(url('wiki', FULL));
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   const canvas = await page.locator('canvas.field').evaluate((c) => [c.width, c.height, getComputedStyle(c).imageRendering]);
   expect(canvas).toEqual([1440, 900, 'pixelated']);
@@ -83,7 +93,7 @@ test('field: draws one pixel per CSS pixel on a dense screen', async ({ browser 
 
 test('field: breathes while shown, and stops asking for frames when hidden', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki');
+  await open(page, 'wiki', FULL);
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await keepsAsking(page);
   await page.evaluate(() => {
@@ -110,7 +120,7 @@ test('field: holds a still frame under reduced motion', async ({ page }) => {
 // settle, never more frames.
 test('field: settles to a still frame in calm', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki');
+  await open(page, 'wiki', FULL);
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await keepsAsking(page);
   await page.locator('.prefs-mast .swatch[data-intensity=calm]').click();
@@ -120,7 +130,7 @@ test('field: settles to a still frame in calm', async ({ page }) => {
 
 test('field: takes the night colours when the theme switches', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
-  await open(page, 'wiki', 'perf');
+  await open(page, 'wiki', FULL);
   const [day] = await sample(page, []);
   await page.evaluate(() => window.__field.pause(false));
   await page.locator('.prefs-mast .theme-btn').click();
@@ -134,9 +144,10 @@ test('perf: ?perf shows the readout, and nothing shows without it', async ({ pag
   await open(page, 'wiki');
   await expect(page.locator('pre.perf')).toHaveCount(0);
   expect(await page.evaluate(() => 'window.__field' in window || window.__field !== undefined)).toBe(false);
-  await open(page, 'wiki', 'perf');
+  await open(page, 'wiki', FULL);
   const readout = page.locator('pre.perf');
   await expect(readout).toContainText('field normal  1440x900 css px');
+  await expect(readout).toContainText(/^stage full, held {2}late \d+ ms, \d+ of \d+ frames$/m);
   await expect(readout).toContainText(/^\s*\d+ fps {3}gap p90 \d+\.\d ms$/m);
   await expect(readout).toContainText(/^cpu {2}med \d+\.\d\d {2}p90 \d+\.\d\d ms$/m);
   // SwiftShader answers a timer query once its GPU process has caught up with the page,
@@ -157,7 +168,7 @@ async function pulled(page) {
 
 test('field: the open palette pulls the lattice to itself', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki', 'perf');
+  await open(page, 'wiki', FULL);
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await page.keyboard.press('Control+k');
   await expect(page.locator('dialog.palette')).toBeVisible();
@@ -169,7 +180,7 @@ test('field: a palette opened before the field starts pulls it too', async ({ pa
   const held = new Promise((resolve) => { release = resolve; });
   await page.route(/\/field_bg\.[0-9a-f]+\.wasm$/, async (route) => { await held; await route.continue(); });
   await countFrames(page);
-  await open(page, 'wiki', 'perf');
+  await open(page, 'wiki', FULL);
   await page.keyboard.press('Control+k');
   await expect(page.locator('dialog.palette')).toBeVisible();
   release();
@@ -209,8 +220,8 @@ test('field: draws the prototype\'s pixels', async ({ browser }) => {
     await context.close();
     return Buffer.from(pixels, 'base64');
   };
-  const ours = await frame(`${prototype}/wasm/wiki.html?hour=9&perf`);
-  const theirs = await frame(`${prototype}/prototype/wiki.html?hour=9&perf`);
+  const ours = await frame(`${prototype}/wasm/wiki.html?hour=9&${FULL}`);
+  const theirs = await frame(`${prototype}/prototype/wiki.html?hour=9&${FULL}`);
   expect(ours.length).toBe(theirs.length);
   let dots = 0;
   let differ = 0;
@@ -220,4 +231,76 @@ test('field: draws the prototype\'s pixels', async ({ browser }) => {
   }
   expect(dots, 'a lattice, not a blank frame').toBeGreaterThan(1000);
   expect(differ, `${differ} of ${ours.length / 3} pixels differ`).toBe(0);
+});
+
+// How late each of `count` timers of 10 ms, one after another, fires, in milliseconds.
+const lateness = (page, count) => page.evaluate((count) => new Promise((done) => {
+  const late = [];
+  const next = () => {
+    const due = performance.now() + 10;
+    setTimeout(() => {
+      late.push(performance.now() - due);
+      if (late.length < count) next(); else done(late);
+    }, 10);
+  };
+  next();
+}), count);
+
+// How long each key the page is sent waits before its handler runs, in milliseconds.
+async function keyDelays(page, count) {
+  await page.evaluate(() => {
+    if (!window.key_delays) addEventListener('keydown', (event) => window.key_delays.push(performance.now() - event.timeStamp));
+    window.key_delays = [];
+  });
+  for (let i = 0; i < count; i++) await page.keyboard.press('Shift');
+  await expect.poll(() => page.evaluate(() => window.key_delays.length)).toBe(count);
+  return page.evaluate(() => window.key_delays);
+}
+
+// ?perf's slow(ms) adds that much busy work to every frame the field draws, counts each
+// late and lets go of ?perf=full, so the field steps down from full however fast the
+// machine is. The hour is held: while the light eases after the visitor's hour differs
+// from the demo's, the page restyles every frame, field or not.
+test('field: steps down to the still frame when its frames are slow, and the page answers again', async ({ page }) => {
+  await countFrames(page);
+  await open(page, 'wiki', `hour=9&${FULL}`);
+  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
+  await page.evaluate(() => window.__field.slow(200));
+  expect(Math.max(...await lateness(page, 20)), 'the page waits behind the slow frames').toBeGreaterThan(100);
+  await expect.poll(() => page.evaluate(() => window.__field.stage()), { timeout: 20_000 }).toBe('still');
+  const readout = page.locator('pre.perf');
+  await expect(readout).toContainText(/^field still {2}1440x900 css px$/m);
+  for (const stage of ['half', 'slow', 'still']) {
+    await expect(readout).toContainText(new RegExp(`^step {2}${stage} at \\d+\\.\\d\\d s, (\\d+) of \\1 frames late$`, 'm'));
+  }
+  // The still frame draws only on change, so the page is quiet again.
+  await expect.poll(() => framesOver(page, 600), { message: 'still', timeout: 20_000 }).toBe(0);
+  // Within the 100 ms a reader takes as at once, and half a slow frame.
+  expect(Math.max(...await keyDelays(page, 5)), 'keys answered at once').toBeLessThan(100);
+  expect(Math.max(...await lateness(page, 20)), 'timers on time').toBeLessThan(100);
+  // Still a lattice, at one canvas pixel per two CSS pixels.
+  expect(await page.locator('canvas.field').evaluate((c) => [c.width, c.height])).toEqual([720, 450]);
+  const [whole] = await sample(page, []);
+  expect(whole.dots).toBeGreaterThan(0);
+});
+
+// A small window with the hour held, so the light does not ease, is cheap even in
+// SwiftShader: the GPU finishes each frame before the next. The field starts once the page
+// has, so the page's own start, which in SwiftShader shares the CPU with the field's GPU,
+// does not hold up its first frames.
+test('field: a fast field stays at full quality', async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 240 });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route(/\/field_bg\.[0-9a-f]+\.wasm$/, async (route) => { await held; await route.continue(); });
+  await countFrames(page);
+  await open(page, 'wiki', 'hour=9&perf');
+  await page.evaluate(() => document.fonts.ready);
+  release();
+  await expect(page.locator('html')).toHaveClass(/\bgl-on\b/, { timeout: 15_000 });
+  await keepsAsking(page, 90);
+  await expect(page.locator('pre.perf')).toContainText(/^stage full {2}late \d+ ms, \d+ of \d\d+ frames$/m);
+  await expect(page.locator('pre.perf')).not.toContainText('step');
+  expect(await page.evaluate(() => window.__field.stage())).toBe('full');
+  expect(await page.locator('canvas.field').evaluate((c) => [c.width, c.height])).toEqual([320, 240]);
 });
