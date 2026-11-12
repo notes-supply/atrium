@@ -1,7 +1,8 @@
 name: Binaries
 # A tag v* on a commit of main publishes a static atrium for x86_64 and aarch64 Linux to a
 # GitHub release, with SHA256SUMS and a cosign bundle per binary. This file's path on the tag
-# is the keyless signing identity that `cosign verify-blob` checks.
+# is the keyless signing identity that `cosign verify-blob` checks. A tag vX.Y.Z also tags the
+# image CI published for that commit as X.Y.Z and latest.
 on:
   push:
     tags: ["v*"]
@@ -108,11 +109,51 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
+  # Tags the image CI published for the tag's commit, ghcr.io/notes-supply/atrium:<commit>,
+  # as X.Y.Z and latest, so that a compose file can name a release. release.yml signed that
+  # image by its digest, and a tag names the same digest, so it needs no new signature.
+  image:
+    name: image
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # read mise.toml for crane
+      packages: write # tag the image
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+      IMAGE: ghcr.io/notes-supply/atrium
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: aqua:google/go-containerregistry
+          cache: false
+      - name: Tag the commit's image with the version and latest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          if ! printf '%s\n' "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
+            echo "$GITHUB_REF_NAME is not vX.Y.Z, so the image gets no tags"
+            exit 0
+          fi
+          printf '%s' "$GITHUB_TOKEN" | crane auth login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          if ! digest=$(crane digest "$IMAGE:$GITHUB_SHA"); then
+            echo "There is no image $IMAGE:$GITHUB_SHA. CI publishes one for a commit of main once its gate passed, if it is still main's head then. Rerun this job once it has, or tag a commit that has one." >&2
+            exit 1
+          fi
+          crane tag "$IMAGE@$digest" "$version"
+          crane tag "$IMAGE@$digest" latest
+          echo "$IMAGE@$digest is now $IMAGE:$version and $IMAGE:latest"
+
   # Signs each binary keyless as this workflow on the tag, checks the signature as the README
-  # tells a reader to, and publishes the release.
+  # tells a reader to, and publishes the release, once the image has its tags.
   publish:
     name: publish
-    needs: build
+    needs: [build, image]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:

@@ -97,7 +97,7 @@ Measured with `mise run bench:light`: `/wiki` at 1440 by 900 without WebGL, so n
 
 ## The server example
 
-- **`examples/server/compose.yaml` runs the published images,** which CI tags with the commit of main they were built from, so the example names the two commits rather than a `latest` that does not exist. Both containers run as in `deploy/`: UID 65532, a read-only root, every capability dropped and no new privileges, published on 127.0.0.1 only.
+- **`examples/server/compose.yaml` runs the released images,** `latest` unless `MNEME_VERSION` or `ATRIUM_VERSION` names a version, which a release tags ("Release binaries"). It first named the commits of main the images were built from, which a reader had to look up. Both containers run as in `deploy/`: UID 65532, a read-only root, every capability dropped and no new privileges, published on 127.0.0.1 only.
 - **On a tailnet, `tailscale serve` serves Atrium at `/` and only Mneme's `/git` beside it,** so the writers push through the same name and Mneme's reading API, which has no login, stays on the machine. Tailscale's documentation does not say what `--set-path` does to the path; its source does: the proxy handler strips the mount point (`ipn/ipnlocal/serve.go`, "Trim the mount point from the URL path before proxying", #6571), the target keeps its own path (`ipn.ExpandProxyTargetValue`), and the two are joined, so `--set-path /git http://127.0.0.1:8081/git` hands `/git/wiki.git/...` to Mneme unchanged. The proxy also keeps the request's `Host`, which is why the tailnet name goes in `--allowed-hosts`.
 
 ## The image
@@ -126,6 +126,7 @@ Measured with `mise run bench:light`: `/wiki` at 1440 by 900 without WebGL, so n
 - **Each binary comes from the Containerfile's build stage** on a runner of its own architecture, so it is the one that architecture's image carries. Both base images are pinned by the digest of a multi-architecture index, which lists `linux/amd64` and `linux/arm64`, so the same pins serve both. The stage builds for the build machine's own musl target, so it needs no target named.
 - **The Wasm bundles are built once,** on x86_64, the only platform `mise.lock` pins the nightly and the Wasm tools for, and handed to both builds as an artifact. A `.wasm` is the same file wherever it is built.
 - **The publish job verifies each bundle it signs** with the identity the README gives, so a release whose bundles do not verify is never created.
+- **A tag `vX.Y.Z` also tags the image** that CI published for its commit, `ghcr.io/notes-supply/atrium:<commit>`, as `X.Y.Z` and `latest`, with crane, by the digest it found. The release workflow signed that digest, and a tag does not change it, so the tag needs no signature of its own. It runs before the publish job, so a tag whose commit has no image publishes nothing and says why: CI publishes an image only once the gate passed on a commit that is still main's head, so a tag pushed sooner needs its run rerun. Another tag on `v*`, such as a pre-release, leaves the image's tags alone.
 
 ## Deployment
 
