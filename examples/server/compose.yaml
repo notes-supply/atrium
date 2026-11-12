@@ -29,7 +29,7 @@ services:
     cap_drop: [ALL]
     security_opt: ["no-new-privileges:true"]
     environment:
-      ATRIUM_VIEWER: owner
+      ATRIUM_VIEWER: member
       ATRIUM_MNEME_URL: http://mneme:8080
       ATRIUM_ALLOWED_HOSTS: ${ATRIUM_ALLOWED_HOSTS:-localhost,127.0.0.1,[::1]}
       ATRIUM_TIME_ZONE: ${ATRIUM_TIME_ZONE:-UTC}

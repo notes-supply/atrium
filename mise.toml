@@ -24,12 +24,12 @@ rust = { version = "nightly-2026-10-28", profile = "minimal", components = "rust
 [tasks.demo]
 description = "Run Atrium on 127.0.0.1:8080 with the design's invented wiki, no Mneme needed"
 depends = ["build:wasm"]
-run = "cargo run -- --demo --viewer owner"
+run = "cargo run -- --demo --viewer member"
 
 [tasks.dev]
-description = "Run Atrium for the owner on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
+description = "Run Atrium for a member on 127.0.0.1:8080, in front of ATRIUM_MNEME_URL or 127.0.0.1:8081"
 depends = ["build:wasm"]
-run = "cargo run -- --viewer owner --mneme-url ${ATRIUM_MNEME_URL:-http://127.0.0.1:8081}"
+run = "cargo run -- --viewer member --mneme-url ${ATRIUM_MNEME_URL:-http://127.0.0.1:8081}"
 
 [tasks.fmt]
 description = "Format the Rust sources"

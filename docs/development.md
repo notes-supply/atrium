@@ -6,7 +6,7 @@ The tools are pinned in `mise.toml`, and `mise install` installs them.
 
 ```sh
 mise run build:wasm
-cargo run -- --viewer owner --mneme-url http://127.0.0.1:8081
+cargo run -- --viewer member --mneme-url http://127.0.0.1:8081
 ```
 
 `mise run dev` does both, with `ATRIUM_MNEME_URL` or `http://127.0.0.1:8081` as Mneme. `mise run demo` serves the design's invented wiki with no Mneme (`--demo`, or `--demo away` for the wiki out of reach). `mise run build:wasm` and then `cargo build --release --locked -p atrium` build the server a release ships, since it embeds the Wasm bundles.

@@ -103,7 +103,7 @@ async fn atrium_reads_the_folder_through_the_mneme_it_starts_and_stops_it() {
     );
 
     let wiki = reqwest::get(format!("http://{addr}/wiki")).await.unwrap();
-    assert_eq!(wiki.status(), 200, "the owner sees the wiki");
+    assert_eq!(wiki.status(), 200, "a member sees the wiki");
     assert!(
         mneme
             .requests()
@@ -227,10 +227,10 @@ async fn a_missing_mneme_says_where_to_get_it() {
 }
 
 #[test]
-fn a_wiki_folder_takes_no_mneme_url_or_demo_and_serves_the_owner() {
+fn a_wiki_folder_takes_no_mneme_url_or_demo_and_serves_members() {
     let parse = |args: &[&str]| atrium::Config::try_parse_from([&["atrium"][..], args].concat());
     let local = parse(&["--wiki-folder", "/wiki"]).unwrap();
-    assert_eq!(local.viewer, Viewer::Owner);
+    assert_eq!(local.viewer, Viewer::Member);
     assert_eq!(local.wiki_folder.as_deref(), Some(Path::new("/wiki")));
     let anonymous = parse(&["--wiki-folder", "/wiki", "--viewer", "anonymous"]).unwrap();
     assert_eq!(anonymous.viewer, Viewer::Anonymous);

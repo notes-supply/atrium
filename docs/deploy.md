@@ -16,7 +16,7 @@ The same run tags the image CI published for the tag's commit as `X.Y.Z` and `la
 
 A push to `main` publishes a release for a cluster once the gate passes on that commit. CI's release job pushes the image built by the `image` job to `ghcr.io/notes-supply/atrium`, tagged with the commit, and `tools/release.sh` pins that digest in `deploy/`, pushes `deploy/` as one OCI artifact to `ghcr.io/notes-supply/manifests/atrium`, signs the image and the artifact keyless as `.github/workflows/release.yml` on `main`, and points the artifact's `main` tag at it.
 
-`deploy/` is a Kustomize base that holds only what a release may change: two pods spread over nodes, rolled one at a time, and their disruption budget. They run as UID 65532 on a read-only root, listen on port 8080, read Mneme at `http://mneme:8080` and serve the owner. A cluster running Flux can follow the artifact's `main` tag and apply only what cosign verifies, with the issuer `https://token.actions.githubusercontent.com` and this identity:
+`deploy/` is a Kustomize base that holds only what a release may change: two pods spread over nodes, rolled one at a time, and their disruption budget. They run as UID 65532 on a read-only root, listen on port 8080, read Mneme at `http://mneme:8080` and serve members, as `tailnet`, its other name. A cluster running Flux can follow the artifact's `main` tag and apply only what cosign verifies, with the issuer `https://token.actions.githubusercontent.com` and this identity:
 
 ```
 ^https://github\.com/notes-supply/atrium/\.github/workflows/release\.yml@refs/heads/main$

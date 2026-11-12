@@ -183,6 +183,10 @@ async fn binary_logs_each_request_and_stops_on_sigterm() {
     );
     let listening = atrium.next();
     assert_eq!(listening["event"], "listening");
+    assert_eq!(
+        listening["viewer"], "member",
+        "owner, as v0.1.0 called it, is a member"
+    );
     let addr = listening["addr"].as_str().unwrap().to_owned();
 
     let reply = reqwest::get(format!("http://{addr}/healthz?q=secret"))
@@ -205,7 +209,7 @@ async fn clock(env: &[(&str, &str)], args: &[&str]) -> String {
         "--addr",
         "127.0.0.1:0",
         "--viewer",
-        "owner",
+        "member",
         "--allowed-hosts",
         "127.0.0.1",
         "--mneme-url",
