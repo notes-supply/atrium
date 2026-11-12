@@ -120,6 +120,12 @@ Measured with `mise run bench:light`: `/wiki` at 1440 by 900 without WebGL, so n
 - **Lists page as the design shows them:** 16 pages, 10 events of a history, five days of changes.
 - **The demo is the same code.** `atrium --demo` starts a stand-in for Mneme in the process, filled with the prototype's content in Mneme's shapes, and holds the clock at the prototype's 09:41. Its week is computed from its own changes, so it is sparser than the prototype's random one.
 
+## The README's screenshots
+
+- **They are taken under reduced motion,** in the browser tests' Chromium with WebGL in SwiftShader. The field then skips its entrance, jumps every spring to its target and draws one still frame, with each surface's pull and heat in full, so two runs write the same bytes. Holding a moving field with `?perf=full` would have shown the readout, and a frame of a breathing field differs from run to run. The script fails if the field stepped down before the shot.
+- **One width, 1440 by 900, at one pixel per CSS pixel,** as Chromium writes them. They are 100 to 230 KB each. ImageMagick's strongest lossless compression made none smaller, and a palette of 256 colours, a third of the size, would be lossy and one more tool.
+- **Only home has a night variant,** for `<picture>`; the diff is shown at night instead, so the README shows both themes.
+
 ## Release binaries
 
 - **A tag `v*` on a commit of main publishes the binaries** (`.github/workflows/binaries.yml`): a static `atrium` for x86_64 and aarch64, `SHA256SUMS`, and a cosign bundle per binary, on a GitHub release. The tag's commit must be on main, which the compare API says without a checkout. The workflow is its own file, so its identity, `binaries.yml@refs/tags/vX.Y.Z`, is apart from the one the cluster verifies for a release of the image.

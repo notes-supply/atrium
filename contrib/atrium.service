@@ -2,12 +2,13 @@
 # `mneme serve --folder` for ~/wiki and serves the wiki on 127.0.0.1:8080, to this machine
 # alone.
 #
-# Install atrium and mneme in ~/.local/bin, copy this file to ~/.config/systemd/user/, and run
+# Mneme's installer puts atrium and mneme in ~/.local/bin and this file in
+# ~/.config/systemd/user/, without enabling it. By hand, do the same and run
+# `systemctl --user daemon-reload`. Then
 #
-#   systemctl --user daemon-reload
 #   systemctl --user enable --now atrium.service
 #
-# then open http://localhost:8080. Its logs are in `journalctl --user -u atrium`. To share it
+# and open http://localhost:8080. Its logs are in `journalctl --user -u atrium`. To share it
 # on a tailnet through `tailscale serve`, add that machine's name to the allowed hosts below.
 
 [Unit]
