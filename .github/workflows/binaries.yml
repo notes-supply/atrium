@@ -1,0 +1,158 @@
+name: Binaries
+# A tag v* on a commit of main publishes a static atrium for x86_64 and aarch64 Linux to a
+# GitHub release, with SHA256SUMS and a cosign bundle per binary. This file's path on the tag
+# is the keyless signing identity that `cosign verify-blob` checks.
+on:
+  push:
+    tags: ["v*"]
+permissions: {}
+jobs:
+  # A release is cut from main only.
+  on-main:
+    name: on main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read # compare the tag's commit with main
+    steps:
+      - name: Check that the tag's commit is on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          status=$(gh api "repos/$GITHUB_REPOSITORY/compare/main...$GITHUB_SHA" --jq .status)
+          case "$status" in
+            identical | behind) echo "$GITHUB_REF_NAME is $GITHUB_SHA, a commit of main" ;;
+            *)
+              echo "$GITHUB_REF_NAME is $GITHUB_SHA, which is not on main ($status)" >&2
+              exit 1
+              ;;
+          esac
+
+  # The Wasm bundles, built once by the pinned nightly, which mise.lock pins for x86_64 only.
+  # A .wasm is the same file wherever it is built, and the server embeds them.
+  wasm:
+    name: wasm
+    needs: on-main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: rust github:wasm-bindgen/wasm-bindgen aqua:WebAssembly/binaryen
+          cache: false
+      - run: mise run build:wasm
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wasm
+          path: target/web
+          retention-days: 1
+          if-no-files-found: error
+
+  # The image's own build stage on each architecture, so each binary is the one its image
+  # carries: static musl, built by the Rust the Containerfile pins.
+  build:
+    name: build ${{ matrix.arch }}
+    needs: wasm
+    strategy:
+      matrix:
+        include:
+          - arch: x86_64
+            machine: X86-64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            machine: AArch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    env:
+      BINARY: atrium-${{ matrix.arch }}-linux
+      MACHINE: ${{ matrix.machine }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: wasm
+          path: target/web
+      - name: Build atrium in the image's build stage
+        run: |
+          command -v podman >/dev/null || { sudo apt-get update -q && sudo apt-get install -y -q podman; }
+          podman build --file Containerfile --target build --tag localhost/atrium-build .
+          stage=$(podman create localhost/atrium-build)
+          podman cp "$stage:/atrium" "$BINARY"
+          podman rm "$stage" >/dev/null
+      - name: Check that it is static, for this machine, and runs
+        run: |
+          if readelf -lW "$BINARY" | grep -q 'program interpreter'; then
+            echo "$BINARY names a program interpreter, so it is not static" >&2
+            exit 1
+          fi
+          readelf -hW "$BINARY" | grep 'Machine:' | grep -q "$MACHINE" \
+            || { echo "$BINARY is not for $MACHINE" >&2; exit 1; }
+          echo "$BINARY is static: $(readelf -hW "$BINARY" | grep -E 'Type:|Machine:' | xargs)"
+          "./$BINARY" --version
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ env.BINARY }}
+          path: ${{ env.BINARY }}
+          retention-days: 1
+          if-no-files-found: error
+
+  # Signs each binary keyless as this workflow on the tag, checks the signature as the README
+  # tells a reader to, and publishes the release.
+  publish:
+    name: publish
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the release and attach the files
+      id-token: write # sign keyless as this workflow
+    concurrency:
+      group: binaries-${{ github.ref }}
+      cancel-in-progress: false
+    env:
+      MISE_TASK_RUN_AUTO_INSTALL: "false"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: jdx/mise-action@6be3c7ed4c21d4f76b208d351d95aac273ebb76d # v5.2.4
+        with:
+          install_args: aqua:sigstore/cosign
+          cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: atrium-*-linux
+          merge-multiple: true
+          path: dist
+      - name: Sum and sign the binaries
+        working-directory: dist
+        run: |
+          sha256sum atrium-x86_64-linux atrium-aarch64-linux >SHA256SUMS
+          cat SHA256SUMS
+          identity="https://github.com/$GITHUB_REPOSITORY/.github/workflows/binaries.yml@$GITHUB_REF"
+          for binary in atrium-x86_64-linux atrium-aarch64-linux; do
+            cosign sign-blob --yes --bundle "$binary.sigstore.json" "$binary"
+            cosign verify-blob --bundle "$binary.sigstore.json" --certificate-identity "$identity" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com "$binary"
+          done
+      - name: Publish the release
+        working-directory: dist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag \
+            --title "$GITHUB_REF_NAME" --generate-notes \
+            atrium-x86_64-linux atrium-aarch64-linux SHA256SUMS \
+            atrium-x86_64-linux.sigstore.json atrium-aarch64-linux.sigstore.json

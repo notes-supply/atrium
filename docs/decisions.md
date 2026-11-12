@@ -114,6 +114,13 @@ Measured with `mise run bench:light`: `/wiki` at 1440 by 900 without WebGL, so n
 - **Lists page as the design shows them:** 16 pages, 10 events of a history, five days of changes.
 - **The demo is the same code.** `atrium --demo` starts a stand-in for Mneme in the process, filled with the prototype's content in Mneme's shapes, and holds the clock at the prototype's 09:41. Its week is computed from its own changes, so it is sparser than the prototype's random one.
 
+## Release binaries
+
+- **A tag `v*` on a commit of main publishes the binaries** (`.github/workflows/binaries.yml`): a static `atrium` for x86_64 and aarch64, `SHA256SUMS`, and a cosign bundle per binary, on a GitHub release. The tag's commit must be on main, which the compare API says without a checkout. The workflow is its own file, so its identity, `binaries.yml@refs/tags/vX.Y.Z`, is apart from the one the cluster verifies for a release of the image.
+- **Each binary comes from the Containerfile's build stage** on a runner of its own architecture, so it is the one that architecture's image carries. Both base images are pinned by the digest of a multi-architecture index, which lists `linux/amd64` and `linux/arm64`, so the same pins serve both. The stage builds for the build machine's own musl target, so it needs no target named.
+- **The Wasm bundles are built once,** on x86_64, the only platform `mise.lock` pins the nightly and the Wasm tools for, and handed to both builds as an artifact. A `.wasm` is the same file wherever it is built.
+- **The publish job verifies each bundle it signs** with the identity the README gives, so a release whose bundles do not verify is never created.
+
 ## Deployment
 
 - **Flux in the project's cluster verifies cosign's classic `.sig` signature, so the release signs in that format.** Flux 2.8.2 found no signature in cosign 3.1.4's default bundle format, which a registry without the referrers API, GHCR among them, stores under a `sha256-<digest>` tag, and it verified the same artifact signed with `--new-bundle-format=false`. Shown on kind with a key; keyless signing is proven only once `release.yml` has run on GitHub.

@@ -4,6 +4,23 @@ Atrium is a private homepage and dashboard for one person, reached over a tailne
 
 Pages are HTML that works without script, in the design the owner chose, which lives in `crates/atrium-ui`. Rust Wasm modules add behaviour on top, loaded by `data-module` attributes: the field behind every page, the command palette, keys, live search, link previews and the rest, in two bundles described in `web/README.md`.
 
+## Install
+
+Each release is a static `atrium` for Linux on x86_64 and aarch64, built from the image's own build stage, with `SHA256SUMS` and a cosign bundle per binary, signed keyless by `.github/workflows/binaries.yml` on the release's tag. With `vX.Y.Z` the release you want:
+
+```sh
+arch=$(uname -m)
+base=https://github.com/notes-supply/atrium/releases/download/vX.Y.Z
+curl -fL -O "$base/atrium-$arch-linux" -O "$base/atrium-$arch-linux.sigstore.json"
+cosign verify-blob --bundle "atrium-$arch-linux.sigstore.json" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  --certificate-identity https://github.com/notes-supply/atrium/.github/workflows/binaries.yml@refs/tags/vX.Y.Z \
+  "atrium-$arch-linux"
+install -D -m 755 "atrium-$arch-linux" ~/.local/bin/atrium
+```
+
+From a checkout, `mise run build:wasm` and then `cargo build --release --locked -p atrium` build the same server, since it embeds the Wasm bundles.
+
 ## Run it
 
 ```sh
