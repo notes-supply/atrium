@@ -36,14 +36,20 @@ export function url(name, query = '') {
   return base + route.path + (query ? (route.path.includes('?') ? '&' : '?') + query : '');
 }
 
-/** The route's path as the address bar shows it, for `toHaveURL`. */
-export const at = (name) => new RegExp(`${ROUTES.find((r) => r.name === name).path.replace(/[?.]/g, '\\$&')}$`);
+// The demo's hour, 09:41 in Stockholm, which every page it serves is written in. Asked for
+// with ?hour, the light module keeps it, so the light does not move under a test.
+export const HELD = 'hour=9';
+
+/** The route's path as the address bar shows it, for `toHaveURL`, held or not. */
+export const at = (name) => new RegExp(`${ROUTES.find((r) => r.name === name).path.replace(/[?.]/g, '\\$&')}([?&]${HELD})?$`);
 
 // The ui bundle mounts every module in one synchronous pass, and the clock, on every
 // page, rewrites its datetime as a full ISO time as it mounts. The server writes it to the
-// minute, so once it ends in Z every module is in place.
-export async function open(page, name, query) {
-  await page.goto(url(name, query));
+// minute, so once it ends in Z every module is in place. The page is held at the demo's
+// hour unless the query names an hour or the test is about the light (`held: false`).
+export async function open(page, name, query = '', { held = true } = {}) {
+  const hold = held && !/(^|&)hour=/.test(query) ? HELD : '';
+  await page.goto(url(name, [query, hold].filter(Boolean).join('&')));
   await expect(page.locator('time.clock[datetime$="Z"]')).toHaveCount(1);
 }
 

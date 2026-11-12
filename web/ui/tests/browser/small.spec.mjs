@@ -84,7 +84,7 @@ test('greet: the greeting follows the visitor\'s clock', async ({ page }) => {
 
 test('light: the hour on <html> follows the visitor\'s clock, and turns while the page is open', async ({ page }) => {
   await page.clock.install({ time: clockAt(14, 59) });
-  await open(page, 'wiki');
+  await open(page, 'wiki', '', { held: false });
   await expect(page.locator('html')).toHaveAttribute('data-hour', '14');
   await page.evaluate(() => { window.hours = 0; document.addEventListener('atrium:hour', () => window.hours++); });
   await page.clock.fastForward(61_000);
