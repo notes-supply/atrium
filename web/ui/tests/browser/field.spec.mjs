@@ -1,4 +1,4 @@
-import { test, expect, open, url } from './test.mjs';
+import { test, expect, open, url, HELD } from './test.mjs';
 
 const prototype = `http://127.0.0.1:${process.env.PROTOTYPE_PORT}`;
 
@@ -82,7 +82,7 @@ test('field: draws the lattice, finest and in the colour of trouble around what 
 test('field: draws one pixel per CSS pixel on a dense screen', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 2 });
   const page = await context.newPage();
-  await page.goto(url('wiki', FULL));
+  await page.goto(url('wiki', `${HELD}&${FULL}`));
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   const canvas = await page.locator('canvas.field').evaluate((c) => [c.width, c.height, getComputedStyle(c).imageRendering]);
   expect(canvas).toEqual([1440, 900, 'pixelated']);
@@ -259,11 +259,10 @@ async function keyDelays(page, count) {
 
 // ?perf's slow(ms) adds that much busy work to every frame the field draws, counts each
 // late and lets go of ?perf=full, so the field steps down from full however fast the
-// machine is. The hour is held: while the light eases after the visitor's hour differs
-// from the demo's, the page restyles every frame, field or not.
+// machine is.
 test('field: steps down to the still frame when its frames are slow, and the page answers again', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki', `hour=9&${FULL}`);
+  await open(page, 'wiki', FULL);
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await page.evaluate(() => window.__field.slow(200));
   expect(Math.max(...await lateness(page, 20)), 'the page waits behind the slow frames').toBeGreaterThan(100);
@@ -284,17 +283,16 @@ test('field: steps down to the still frame when its frames are slow, and the pag
   expect(whole.dots).toBeGreaterThan(0);
 });
 
-// A small window with the hour held, so the light does not ease, is cheap even in
-// SwiftShader: the GPU finishes each frame before the next. The field starts once the page
-// has, so the page's own start, which in SwiftShader shares the CPU with the field's GPU,
-// does not hold up its first frames.
+// A small window is cheap even in SwiftShader: the GPU finishes each frame before the
+// next. The field starts once the page has, so the page's own start, which in SwiftShader
+// shares the CPU with the field's GPU, does not hold up its first frames.
 test('field: a fast field stays at full quality', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 240 });
   let release;
   const held = new Promise((resolve) => { release = resolve; });
   await page.route(/\/field_bg\.[0-9a-f]+\.wasm$/, async (route) => { await held; await route.continue(); });
   await countFrames(page);
-  await open(page, 'wiki', 'hour=9&perf');
+  await open(page, 'wiki', 'perf');
   await page.evaluate(() => document.fonts.ready);
   release();
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/, { timeout: 15_000 });

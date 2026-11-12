@@ -66,7 +66,12 @@ run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui
 [tasks."bench:field"]
 description = "Time the field in SwiftShader; CPUSET pins cores and PROTOTYPE adds the prototype's own field beside it (needs Docker)"
 depends = ["build:wasm"]
-run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui/tests/browser/bench.config.mjs"
+run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui/tests/browser/bench.config.mjs field.bench.mjs"
+
+[tasks."bench:light"]
+description = "Count the style, layout and paint work and the CPU of the light of the hour, easing and held, at 1440 by 900 without the field (needs Docker)"
+depends = ["build:wasm"]
+run = "tools/browser.sh node node_modules/@playwright/test/cli.js test -c web/ui/tests/browser/bench.config.mjs light.bench.mjs"
 
 [tasks."check:fmt"]
 description = "Check formatting"

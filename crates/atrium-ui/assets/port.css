@@ -12,3 +12,8 @@
 /* Slots the browser modules fill, such as "Continue reading", stay out of the layout until
    then, whatever display their class gives them. */
 [hidden] { display: none !important; }
+
+/* The light module eases the light of the hour itself, a small step every thirty seconds.
+   The tokens' forty-minute transition of the two inherited numbers made the browser restyle
+   and repaint the whole page every frame of it. Without scripts the hour never changes. */
+:root { transition: none; }

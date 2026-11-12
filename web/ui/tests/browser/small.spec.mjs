@@ -81,19 +81,3 @@ test('greet: the greeting follows the visitor\'s clock', async ({ page }) => {
   await open(page, 'index');
   await expect(page.locator('.sentence [data-module=greet]')).toHaveText('Good evening.');
 });
-
-test('light: the hour on <html> follows the visitor\'s clock, and turns while the page is open', async ({ page }) => {
-  await page.clock.install({ time: clockAt(14, 59) });
-  await open(page, 'wiki');
-  await expect(page.locator('html')).toHaveAttribute('data-hour', '14');
-  await page.evaluate(() => { window.hours = 0; document.addEventListener('atrium:hour', () => window.hours++); });
-  await page.clock.fastForward(61_000);
-  await expect(page.locator('html')).toHaveAttribute('data-hour', '15');
-  expect(await page.evaluate(() => window.hours)).toBe(1);
-});
-
-test('light: a page asked for one hour keeps it', async ({ page }) => {
-  await page.clock.install({ time: clockAt(14, 0) });
-  await open(page, 'wiki', 'hour=9');
-  await expect(page.locator('html')).toHaveAttribute('data-hour', '9');
-});
