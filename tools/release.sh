@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Publishes deploy/ for Flux on Apollo: pins the image by digest, pushes deploy/ as one OCI
-# artifact tagged with the commit, signs the image and the artifact, then moves the artifact's
-# main tag, which Flux follows. CI runs it once the gate passed on the commit; the kind
-# rehearsal runs it against a local registry.
+# Publishes deploy/ for a cluster running Flux: pins the image by digest, pushes deploy/ as
+# one OCI artifact tagged with the commit, signs the image and the artifact, then moves the
+# artifact's main tag, which Flux follows. CI runs it once the gate passed on the commit; the
+# kind rehearsal runs it against a local registry.
 #
 #   tools/release.sh IMAGE@sha256:DIGEST oci://REGISTRY/notes-supply/manifests/atrium
 #
-# It signs keyless with the CI workflow's identity, which is what Apollo verifies. With
-# COSIGN_KEY naming a key file it signs with that key instead, and records nothing in the
-# public transparency log.
+# It signs keyless with the CI workflow's identity, which is what such a cluster verifies.
+# With COSIGN_KEY naming a key file it signs with that key instead, and records nothing in
+# the public transparency log.
 set -euo pipefail
 
 image=$1

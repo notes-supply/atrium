@@ -1,5 +1,6 @@
-# What an Atrium release may change on Apollo. The cluster repository owns the rest of
-# namespace atrium: the Services, Ingress, network policy, secrets and Mneme's volume.
+# What an Atrium release may change in the cluster that applies it. The cluster's own
+# repository owns the rest of namespace atrium: the Services, Ingress, network policy,
+# secrets and Mneme's volume, and adds the host name and time zone as a patch.
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:

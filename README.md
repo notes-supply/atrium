@@ -43,9 +43,15 @@ A feature implements `atrium_core::Feature`: an id, a name, its routes, and opti
 
 ## Deploy
 
-A push to `main` deploys Atrium to Apollo once the gate passes on that commit. CI's release job pushes the image built by the `image` job to `ghcr.io/notes-supply/atrium` by digest, and `tools/release.sh` packs `deploy/` with that digest as one OCI artifact, signs it keyless as `.github/workflows/release.yml` on `main`, and points its `main` tag at it. Flux on Apollo verifies that signature and applies `deploy/` in namespace `atrium`. `deploy/` holds only what a release may change: two pods spread over nodes, rolled one at a time, and their disruption budget. The cluster repository owns the Services, Ingress, network policy and secrets.
+A push to `main` publishes a release once the gate passes on that commit. CI's release job pushes the image built by the `image` job to `ghcr.io/notes-supply/atrium`, tagged with the commit, and `tools/release.sh` pins that digest in `deploy/`, pushes `deploy/` as one OCI artifact to `ghcr.io/notes-supply/manifests/atrium`, signs the image and the artifact keyless as `.github/workflows/release.yml` on `main`, and points the artifact's `main` tag at it.
 
-The cluster also checks every pod a release creates in namespace `atrium` and refuses it if it:
+`deploy/` is a Kustomize base that holds only what a release may change: two pods spread over nodes, rolled one at a time, and their disruption budget. They run as UID 65532 on a read-only root, listen on port 8080, read Mneme at `http://mneme:8080` and serve the owner. A cluster running Flux can follow the artifact's `main` tag and apply only what cosign verifies, with the issuer `https://token.actions.githubusercontent.com` and this identity:
+
+```
+^https://github\.com/notes-supply/atrium/\.github/workflows/release\.yml@refs/heads/main$
+```
+
+Such a cluster adds its own specifics as an overlay: the host name in `ATRIUM_ALLOWED_HOSTS`, the time zone in `ATRIUM_TIME_ZONE`, and the Services, Ingress, network policy and secrets around the pods. The project's own cluster does that in its own repository. It also checks every pod a release creates in namespace `atrium` and refuses it if it:
 
 - runs as a service account other than `default`;
 - mounts a service account token (keep `automountServiceAccountToken: false`);
@@ -56,8 +62,8 @@ The cluster also checks every pod a release creates in namespace `atrium` and re
 
 A refused pod is never created, so that release never gets ready, as below.
 
-Roll back a bad release with a revert commit on `main`; it deploys the same way.
-A release whose pods never get ready leaves the old pods serving, and Flux applies the revert once that release's 5-minute health check has timed out.
+Roll back a bad release with a revert commit on `main`; it publishes the same way.
+A release whose pods never get ready leaves the old pods serving, and Flux applies the revert once that release's health check has timed out, after 5 minutes in the project's cluster.
 Never retag the artifact by hand: Flux accepts only what the release workflow signed on `main`.
 
 ## Check it
