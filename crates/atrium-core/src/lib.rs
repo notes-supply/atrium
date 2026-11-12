@@ -19,8 +19,9 @@ pub use crate::visit::{Entrance, Intensity, Local, Prefs, Theme, Visit};
 /// Who is asking. A listener serves one kind of viewer, set when the server starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Viewer {
-    /// Someone who reached Atrium over the tailnet: the owner.
-    Tailnet,
+    /// The person this Atrium belongs to, such as whoever their tailnet lets reach it. Its
+    /// name is `owner`, and `tailnet` as well, which it was called first.
+    Owner,
     /// Anyone else.
     Anonymous,
 }
@@ -30,10 +31,10 @@ impl FromStr for Viewer {
 
     fn from_str(name: &str) -> Result<Self, Self::Err> {
         match name {
-            "tailnet" => Ok(Self::Tailnet),
+            "owner" | "tailnet" => Ok(Self::Owner),
             "anonymous" => Ok(Self::Anonymous),
             _ => Err(format!(
-                "unknown viewer {name:?}: expected tailnet or anonymous"
+                "unknown viewer {name:?}: expected owner or anonymous"
             )),
         }
     }
@@ -42,7 +43,7 @@ impl FromStr for Viewer {
 impl fmt::Display for Viewer {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
-            Self::Tailnet => "tailnet",
+            Self::Owner => "owner",
             Self::Anonymous => "anonymous",
         })
     }
@@ -51,7 +52,7 @@ impl fmt::Display for Viewer {
 /// Which viewers may see a feature.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Access {
-    /// The tailnet only.
+    /// The owner only.
     Private,
     /// Every viewer.
     Public,
@@ -63,7 +64,7 @@ impl Access {
     pub const fn admits(self, viewer: Viewer) -> bool {
         match self {
             Self::Public => true,
-            Self::Private => matches!(viewer, Viewer::Tailnet),
+            Self::Private => matches!(viewer, Viewer::Owner),
         }
     }
 }
@@ -157,22 +158,23 @@ mod tests {
     use super::*;
 
     #[test]
-    fn private_admits_only_the_tailnet() {
-        assert!(Access::Private.admits(Viewer::Tailnet));
+    fn private_admits_only_the_owner() {
+        assert!(Access::Private.admits(Viewer::Owner));
         assert!(!Access::Private.admits(Viewer::Anonymous));
     }
 
     #[test]
     fn public_admits_everyone() {
-        assert!(Access::Public.admits(Viewer::Tailnet));
+        assert!(Access::Public.admits(Viewer::Owner));
         assert!(Access::Public.admits(Viewer::Anonymous));
     }
 
     #[test]
     fn viewer_names_read_back() {
-        for viewer in [Viewer::Tailnet, Viewer::Anonymous] {
+        for viewer in [Viewer::Owner, Viewer::Anonymous] {
             assert_eq!(viewer.to_string().parse(), Ok(viewer));
         }
+        assert_eq!("tailnet".parse(), Ok(Viewer::Owner), "its first name");
         assert!("everyone".parse::<Viewer>().is_err());
     }
 }

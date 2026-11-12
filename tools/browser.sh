@@ -26,10 +26,10 @@ cargo build --quiet --locked -p atrium
 mkdir -p target/browser
 pin=""
 [ -n "${CPUSET:-}" ] && pin="taskset -c $CPUSET"
-$pin target/debug/atrium --demo --viewer tailnet --addr "127.0.0.1:$port" --allowed-hosts 127.0.0.1 \
+$pin target/debug/atrium --demo --viewer owner --addr "127.0.0.1:$port" --allowed-hosts 127.0.0.1 \
   2>target/browser/demo.log &
 demo=$!
-$pin target/debug/atrium --demo away --viewer tailnet --addr "127.0.0.1:$away" --allowed-hosts 127.0.0.1 \
+$pin target/debug/atrium --demo away --viewer owner --addr "127.0.0.1:$away" --allowed-hosts 127.0.0.1 \
   2>target/browser/away.log &
 gone=$!
 trap 'kill "$demo" "$gone" 2>/dev/null || true' EXIT

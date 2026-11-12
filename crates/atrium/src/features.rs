@@ -99,14 +99,8 @@ mod tests {
 
     fn config() -> Config {
         use clap::Parser;
-        Config::try_parse_from([
-            "atrium",
-            "--viewer",
-            "tailnet",
-            "--mneme-url",
-            "http://mneme",
-        ])
-        .unwrap()
+        Config::try_parse_from(["atrium", "--viewer", "owner", "--mneme-url", "http://mneme"])
+            .unwrap()
     }
 
     #[test]
@@ -117,10 +111,7 @@ mod tests {
 
     #[test]
     fn navigation_addresses_are_unique() {
-        let site = Site::new(
-            registry(&config(), "http://mneme").unwrap(),
-            Viewer::Tailnet,
-        );
+        let site = Site::new(registry(&config(), "http://mneme").unwrap(), Viewer::Owner);
         assert_eq!(unique(site.nav().iter().map(|entry| entry.href)), Ok(()));
     }
 }

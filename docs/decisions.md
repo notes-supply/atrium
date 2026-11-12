@@ -15,7 +15,8 @@ Choices made while building Atrium that the skeleton brief left open or that dif
 - **Home lives in the server crate,** beside the registry it reads. A feature with its own dependencies, such as the wiki, is a crate. The brief suggested an `atrium-home` crate; it would have needed the registry handed back to it. Home's layout is in `atrium-ui`, because the wiki's pages show the same layout when Mneme is away.
 - **The clock feature is gone.** It proved the registry in the skeleton; the chosen design has no clock tile or page, and the masthead shows the time.
 - **A feature offers navigation entries, a search target, a part of home and a footer line.** Home's part is clauses of the opening sentence, a drawing and tiles. The palette's commands are the navigation entries, which every page lists as plain links with keys `1` to `5`, each with the palette's longer name in `data-title` ("Recent changes" for "Changes"), so the routes and the names both come from the registry. The search target names the form's action and the page list the palette reads, `/wiki/index.json`.
-- **`Feature::access` defaults to `Private`,** so a feature that says nothing is denied to everyone but the tailnet.
+- **`Feature::access` defaults to `Private`,** so a feature that says nothing is denied to everyone but the owner.
+- **The viewer that sees private features is `owner`,** the person this Atrium belongs to. It was first called `tailnet`, after the way the owner reached it, which no longer holds on a laptop; `tailnet` stays another name for it, since a deployment passes it. The start-up log line names the viewer `owner` either way.
 - **Every feature's routes are mounted for every listener,** and one middleware refuses those the listener's viewer may not see. Navigation, commands and tiles leave such features out.
 
 ## Requests and responses

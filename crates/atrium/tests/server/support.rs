@@ -26,9 +26,9 @@ impl Reply {
 }
 
 impl Atrium {
-    /// A tailnet listener in front of Mneme's example responses.
-    pub async fn tailnet() -> Self {
-        Self::start(Stub::Fixtures, &["--viewer", "tailnet"]).await
+    /// A listener for the owner in front of Mneme's example responses.
+    pub async fn owner() -> Self {
+        Self::start(Stub::Fixtures, &["--viewer", "owner"]).await
     }
 
     /// A listener with `args` added to the flags, in front of `mneme`.

@@ -240,7 +240,7 @@ async fn setup(binary: &str) -> (Atrium, Setup) {
     let report = base64(include_str!("../../../atrium-wiki/fixtures/report.json").as_bytes());
     let carried = format!("http.extraHeader=Mneme-Report: {report}");
     work.git(&["-c", &header, "-c", &carried, "ls-remote", &remote], now);
-    let atrium = Atrium::serve(Running::elsewhere(&mneme.base), &["--viewer", "tailnet"]).await;
+    let atrium = Atrium::serve(Running::elsewhere(&mneme.base), &["--viewer", "owner"]).await;
     let setup = Setup {
         _dirs: [home, server, clone],
         _mneme: mneme,

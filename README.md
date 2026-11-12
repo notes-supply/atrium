@@ -8,7 +8,7 @@ Pages are HTML that works without script, in the design the owner chose, which l
 
 ```sh
 mise run build:wasm
-cargo run -- --viewer tailnet --mneme-url http://127.0.0.1:8081 --addr 127.0.0.1:8080
+cargo run -- --viewer owner --mneme-url http://127.0.0.1:8081
 ```
 
 `mise run dev` does both, with `ATRIUM_MNEME_URL` or `http://127.0.0.1:8081` as Mneme. `mise run demo` serves the design's invented wiki with no Mneme (`--demo`, or `--demo away` for the wiki out of reach). Every flag can also be set in the environment:
@@ -16,7 +16,7 @@ cargo run -- --viewer tailnet --mneme-url http://127.0.0.1:8081 --addr 127.0.0.1
 | Flag | Environment | Meaning |
 | --- | --- | --- |
 | `--addr` | `ATRIUM_ADDR` | Where to listen. `127.0.0.1:8080` by default; the image sets `0.0.0.0:8080`. |
-| `--viewer` | `ATRIUM_VIEWER` | Who reaches this listener: `tailnet` sees private features, `anonymous` only public ones. Required. |
+| `--viewer` | `ATRIUM_VIEWER` | Who reaches this listener: `owner`, the person this Atrium belongs to, sees private features, and `anonymous` only public ones. `tailnet` is another name for `owner`. Required. |
 | `--allowed-hosts` | `ATRIUM_ALLOWED_HOSTS` | Host names requests may name, comma-separated, each with any port. `localhost,127.0.0.1,[::1]` by default. `/healthz` answers any. |
 | `--mneme-url` | `ATRIUM_MNEME_URL` | Mneme's base URL. Required. |
 | `--mneme-timeout-ms` | `ATRIUM_MNEME_TIMEOUT_MS` | How long one call to Mneme may take. 3000 by default. Home waits at most 500 ms. |
@@ -37,7 +37,7 @@ Logs are JSON lines on standard error, one per request. SIGTERM stops it after t
 | `tools/browser.sh` | Runs a command in Playwright's image against `atrium --demo`, with the npm packages `package-lock.json` pins. |
 | `tools/check` | The parity check against the prototype. |
 
-A feature implements `atrium_core::Feature`: an id, a name, its routes, and optionally its access, navigation link, home tiles and palette commands. Access defaults to `Private`, which only the tailnet sees. The server builds its router, navigation, home page and palette from the registry alone, and one middleware refuses a route to a viewer its feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
+A feature implements `atrium_core::Feature`: an id, a name, its routes, and optionally its access, navigation link, home tiles and palette commands. Access defaults to `Private`, which only the owner sees. The server builds its router, navigation, home page and palette from the registry alone, and one middleware refuses a route to a viewer its feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
 
 `docs/decisions.md` records the choices that were not obvious.
 

@@ -33,7 +33,8 @@ pub struct Config {
     /// The address to listen on. Loopback only by default; the image sets `0.0.0.0:8080`.
     #[arg(long, env = "ATRIUM_ADDR", default_value = "127.0.0.1:8080")]
     pub addr: SocketAddr,
-    /// Who reaches this listener: `tailnet` sees private features, `anonymous` only public ones.
+    /// Who reaches this listener: `owner`, the person this Atrium belongs to, sees private
+    /// features, and `anonymous` only public ones. `tailnet` is another name for `owner`.
     #[arg(long, env = "ATRIUM_VIEWER")]
     pub viewer: Viewer,
     /// The host names requests may name, separated by commas, each with any port. An IPv6
@@ -194,7 +195,7 @@ mod tests {
     use super::*;
 
     fn parse(args: &[&str]) -> Config {
-        Config::try_parse_from([&["atrium", "--viewer", "tailnet"], args].concat()).unwrap()
+        Config::try_parse_from([&["atrium", "--viewer", "owner"], args].concat()).unwrap()
     }
 
     #[test]
