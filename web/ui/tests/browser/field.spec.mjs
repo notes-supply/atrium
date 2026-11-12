@@ -285,7 +285,14 @@ test('field: steps down to the still frame when its frames are slow, and the pag
 
 // A small window is cheap even in SwiftShader: the GPU finishes each frame before the
 // next. The field starts once the page has, so the page's own start, which in SwiftShader
-// shares the CPU with the field's GPU, does not hold up its first frames.
+// shares the CPU with the field's GPU, does not hold up its first frames. On GitHub's
+// runner SwiftShader can still fall behind for the first half second even at this size,
+// and the field then steps to half once, as it should (15 of 15 frames late, then none of
+// the next 79). There it may take that one step, and must then count frames on time
+// again: the readout's frames since the last step run to two digits. A fence that never
+// passed would step it down within half a second and then count no frame at all, since
+// the step's own fence holds the count until it passes.
+const FAST = process.env.CI ? ['full', 'half'] : ['full'];
 test('field: a fast field stays at full quality', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 240 });
   let release;
@@ -297,8 +304,12 @@ test('field: a fast field stays at full quality', async ({ page }) => {
   release();
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/, { timeout: 15_000 });
   await keepsAsking(page, 90);
-  await expect(page.locator('pre.perf')).toContainText(/^stage full {2}late \d+ ms, \d+ of \d\d+ frames$/m);
-  await expect(page.locator('pre.perf')).not.toContainText('step');
-  expect(await page.evaluate(() => window.__field.stage())).toBe('full');
-  expect(await page.locator('canvas.field').evaluate((c) => [c.width, c.height])).toEqual([320, 240]);
+  const readout = page.locator('pre.perf');
+  await expect(readout).toContainText(new RegExp(`^stage (${FAST.join('|')}) {2}late \\d+ ms, \\d+ of \\d\\d+ frames$`, 'm'));
+  const stage = await page.evaluate(() => window.__field.stage());
+  expect(FAST).toContain(stage);
+  if (stage === 'full') await expect(readout).not.toContainText('step');
+  else await expect(readout).toContainText(/^step {2}half at \d+\.\d\d s, \d+ of \d+ frames late$/m);
+  const size = stage === 'full' ? [320, 240] : [160, 120];
+  expect(await page.locator('canvas.field').evaluate((c) => [c.width, c.height])).toEqual(size);
 });
