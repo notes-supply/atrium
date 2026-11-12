@@ -15,8 +15,8 @@ cargo run -- --viewer member --mneme-url http://127.0.0.1:8081
 
 | Path | Holds |
 | --- | --- |
-| `crates/atrium` | The server: configuration, the registry (`src/features.rs`), middleware, the visit cookie, assets, and home. |
-| `crates/atrium-core` | The contract: `Feature`, `Access`, `Viewer`, `Tile`, `Command`. |
+| `crates/atrium` | The server: configuration (`src/lib.rs`), the registry (`src/features.rs`) and home (`src/features/home.rs`), middleware, the visit cookie, assets, the request log, and the Mneme that `--wiki-folder` starts (`src/local.rs`). |
+| `crates/atrium-core` | The contract: `Feature`, `Access`, `Viewer`, `NavEntry`, `Search`, `HomeContext` and `HomeOffer`, and the visit and preferences a page is written for. |
 | `crates/atrium-ui` | The design: the page shell, components, drawings, stylesheet and fonts. |
 | `crates/atrium-wiki` | The wiki: Mneme's client, one module per page, Markdown rendering, and stand-ins for Mneme for tests and the demo. |
 | `web/ui`, `web/field` | The browser modules in two Wasm bundles, every small behaviour and the WebGL field, with their browser tests. `web/loader.js` is the only script a page loads. [`web/README.md`](../web/README.md) describes them. |
@@ -27,7 +27,15 @@ cargo run -- --viewer member --mneme-url http://127.0.0.1:8081
 | `examples/server` | Mneme and Atrium on one small server, with compose. |
 | `deploy` | The Kustomize base a release publishes ([deploy.md](deploy.md)). |
 
-A feature implements `atrium_core::Feature`: an id, a name, its routes, and optionally its access, navigation link, home tiles and palette commands. Access defaults to `Private`, which only the owner sees. The server builds its router, navigation, home page and palette from the registry alone, and one middleware refuses a route to a viewer its feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
+A feature implements `atrium_core::Feature`. It must give an `id`, a `name` and its `routes`; the rest have defaults:
+
+- `access`: who may see it, `Access::Private` by default, which only members see;
+- `nav`: its links in the navigation, as `NavEntry`s, which the palette lists as its sections and keys `1` to `5` reach;
+- `search`: where a search form sends its words, and the page list the palette offers as the reader types;
+- `home`: its part of home, a `HomeOffer` of clauses of the opening sentence, a drawing and tiles, by the `HomeContext`'s deadline;
+- `footnote`: a line for every page's footer.
+
+The server builds its router, navigation, search and home page from the registry alone, and wraps each feature's routes in one access check (`middleware::guard`) that refuses a viewer the feature does not admit. So a new feature is one module in `crates/atrium/src/features/` and one line in `registry()`. A feature with dependencies of its own gets a crate, as the wiki does.
 
 [`decisions.md`](decisions.md) records the choices that were not obvious.
 
