@@ -196,7 +196,7 @@ const PAGES: [PageData; 16] = [
         updated: "2026-11-09T05:40",
         versions: 19,
         churn: 3302,
-        text: "Write short declarative sentences. Change a page only when something changed. Put questions for the owner under a heading named Open questions.",
+        text: "Write short declarative sentences. Change a page only when something changed. Put questions for the team under a heading named Open questions.",
     },
     PageData {
         key: "grinder",

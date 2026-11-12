@@ -1,4 +1,4 @@
-//! Atrium, a private homepage and dashboard. The binary in `main.rs` parses [`Config`] and
+//! Atrium, a shared homepage and dashboard for a team. The binary in `main.rs` parses [`Config`] and
 //! calls [`run`]; the tests build the same router with [`app`].
 
 mod assets;
