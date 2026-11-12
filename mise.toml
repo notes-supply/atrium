@@ -159,6 +159,11 @@ description = "Record a short visit to atrium --demo and screenshot home, a page
 depends = ["build:wasm"]
 run = "tools/browser.sh node tools/check/capture.mjs"
 
+[tasks.screenshots]
+description = "Screenshot atrium --demo for the README into docs/images: home in day and night, a page, a diff and the machines, at 1440 by 900 under reduced motion (needs Docker)"
+depends = ["build:wasm"]
+run = "tools/browser.sh node tools/screenshots.mjs"
+
 [tasks.axe]
 description = "Run axe on each route of atrium --demo at 1440 and 390 px, day and night, scripts on and off (needs Docker)"
 depends = ["build:wasm"]
