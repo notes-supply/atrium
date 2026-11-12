@@ -118,8 +118,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
-      contents: read # read mise.toml for crane
+      contents: read # read mise.toml for crane, and list the version tags
       packages: write # tag the image
+    # One run at a time moves latest, so two releases cannot race for it.
+    concurrency:
+      group: image-tags
+      cancel-in-progress: false
     env:
       MISE_TASK_RUN_AUTO_INSTALL: "false"
       IMAGE: ghcr.io/notes-supply/atrium
@@ -131,9 +135,10 @@ jobs:
         with:
           install_args: aqua:google/go-containerregistry
           cache: false
-      - name: Tag the commit's image with the version and latest
+      - name: Tag the commit's image with the version, and as latest when it is the newest
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=${GITHUB_REF_NAME#v}
           if ! printf '%s\n' "$version" | grep -Eqx '[0-9]+\.[0-9]+\.[0-9]+'; then
@@ -146,8 +151,16 @@ jobs:
             exit 1
           fi
           crane tag "$IMAGE@$digest" "$version"
-          crane tag "$IMAGE@$digest" latest
-          echo "$IMAGE@$digest is now $IMAGE:$version and $IMAGE:latest"
+          echo "$IMAGE@$digest is now $IMAGE:$version"
+          # A rerun of an older release, or a fix to an older version, must not move latest back.
+          newest=$(gh api --paginate "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/v" \
+            --jq '.[].ref | ltrimstr("refs/tags/")' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1)
+          if [ "$GITHUB_REF_NAME" = "$newest" ]; then
+            crane tag "$IMAGE@$digest" latest
+            echo "$IMAGE@$digest is now $IMAGE:latest"
+          else
+            echo "$newest is newer than $GITHUB_REF_NAME, so latest stays where it is"
+          fi
 
   # Signs each binary keyless as this workflow on the tag, checks the signature as the README
   # tells a reader to, and publishes the release, once the image has its tags.
