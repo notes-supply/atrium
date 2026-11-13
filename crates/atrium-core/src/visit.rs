@@ -251,26 +251,115 @@ impl Prefs {
     pub const INTENSITY: &str = "atrium-intensity";
     /// The cookie that holds whether letter keys work: `on` or `off`.
     pub const KEYS: &str = "atrium-keys";
+    /// How long each cookie is kept, in seconds: a year.
+    pub const KEEP: u32 = 365 * 24 * 60 * 60;
 
     /// The settings named by a request's cookies. Values it does not know are ignored.
     #[must_use]
     pub fn from_cookies<'a>(cookies: impl IntoIterator<Item = (&'a str, &'a str)>) -> Self {
         let mut prefs = Self::default();
         for (name, value) in cookies {
-            match (name, value) {
-                (Self::THEME, "light") => prefs.theme = Some(Theme::Light),
-                (Self::THEME, "dark") => prefs.theme = Some(Theme::Dark),
-                (Self::INTENSITY, value) => {
-                    if let Some(level) = Intensity::ALL.into_iter().find(|i| i.name() == value) {
-                        prefs.intensity = level;
-                    }
-                }
-                (Self::KEYS, "off") => prefs.letter_keys = false,
-                (Self::KEYS, "on") => prefs.letter_keys = true,
-                _ => {}
+            if let Some(choice) = Choice::ALL
+                .into_iter()
+                .find(|choice| choice.cookie() == name && choice.kept() == Some(value))
+            {
+                prefs.choose(choice);
             }
         }
         prefs
+    }
+
+    /// Takes `choice` in place of what the reader had for its setting.
+    pub const fn choose(&mut self, choice: Choice) {
+        match choice {
+            Choice::Theme(theme) => self.theme = theme,
+            Choice::Intensity(level) => self.intensity = level,
+            Choice::LetterKeys(on) => self.letter_keys = on,
+        }
+    }
+}
+
+/// One choice the settings page offers: a setting and its value, as its form sends them, and
+/// the cookie that keeps it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Choice {
+    /// The day or night look, or `None` to follow the system's.
+    Theme(Option<Theme>),
+    Intensity(Intensity),
+    /// Whether single-letter keys work.
+    LetterKeys(bool),
+}
+
+impl Choice {
+    /// Every choice, in the order the settings page lists them.
+    pub const ALL: [Self; 8] = [
+        Self::Theme(None),
+        Self::Theme(Some(Theme::Light)),
+        Self::Theme(Some(Theme::Dark)),
+        Self::Intensity(Intensity::Calm),
+        Self::Intensity(Intensity::Normal),
+        Self::Intensity(Intensity::Lively),
+        Self::LetterKeys(true),
+        Self::LetterKeys(false),
+    ];
+
+    /// The setting's name in the form: `theme`, `intensity` or `keys`, which is its cookie's
+    /// name after `atrium-` and its attribute's on `<html>` after `data-`.
+    #[must_use]
+    pub const fn setting(self) -> &'static str {
+        match self {
+            Self::Theme(_) => "theme",
+            Self::Intensity(_) => "intensity",
+            Self::LetterKeys(_) => "keys",
+        }
+    }
+
+    /// The value in the form: `system`, `light` or `dark`, an intensity's name, `on` or `off`.
+    #[must_use]
+    pub const fn value(self) -> &'static str {
+        match self {
+            Self::Theme(None) => "system",
+            Self::Theme(Some(theme)) => theme.name(),
+            Self::Intensity(level) => level.name(),
+            Self::LetterKeys(true) => "on",
+            Self::LetterKeys(false) => "off",
+        }
+    }
+
+    /// The choice a form sends as `setting=value`, when both are known.
+    #[must_use]
+    pub fn parse(setting: &str, value: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|choice| choice.setting() == setting && choice.value() == value)
+    }
+
+    /// The cookie that keeps the setting.
+    #[must_use]
+    pub const fn cookie(self) -> &'static str {
+        match self {
+            Self::Theme(_) => Prefs::THEME,
+            Self::Intensity(_) => Prefs::INTENSITY,
+            Self::LetterKeys(_) => Prefs::KEYS,
+        }
+    }
+
+    /// What the cookie keeps, or `None` when the choice clears it, as following the system
+    /// does.
+    #[must_use]
+    pub const fn kept(self) -> Option<&'static str> {
+        match self {
+            Self::Theme(None) => None,
+            _ => Some(self.value()),
+        }
+    }
+
+    /// Whether the reader has this choice.
+    #[must_use]
+    pub fn chosen(self, prefs: Prefs) -> bool {
+        let mut chosen = prefs;
+        chosen.choose(self);
+        chosen == prefs
     }
 }
 
@@ -374,7 +463,53 @@ mod tests {
         assert_eq!(prefs.theme, Some(Theme::Dark));
         assert_eq!(prefs.intensity, Intensity::Lively);
         assert!(!prefs.letter_keys);
-        let odd = Prefs::from_cookies([("atrium-theme", "sepia"), ("atrium-intensity", "loud")]);
+        let odd = Prefs::from_cookies([
+            ("atrium-theme", "sepia"),
+            ("atrium-theme", "system"),
+            ("atrium-intensity", "loud"),
+        ]);
         assert_eq!(odd, Prefs::default());
+    }
+
+    #[test]
+    fn a_choice_reads_back_from_its_form_and_its_cookie() {
+        for choice in Choice::ALL {
+            assert_eq!(
+                Choice::parse(choice.setting(), choice.value()),
+                Some(choice)
+            );
+            assert_eq!(
+                choice.cookie(),
+                ["atrium-", choice.setting()].concat(),
+                "{choice:?}"
+            );
+            let mut prefs = Prefs::default();
+            prefs.choose(choice);
+            let kept = choice.kept().map(|value| (choice.cookie(), value));
+            assert_eq!(Prefs::from_cookies(kept), prefs, "{choice:?}");
+            assert!(choice.chosen(prefs), "{choice:?}");
+        }
+        for (setting, value) in [
+            ("theme", "sepia"),
+            ("theme", "Dark"),
+            ("intensity", "system"),
+            ("keys", "true"),
+            ("atrium-theme", "dark"),
+            ("", ""),
+        ] {
+            assert_eq!(Choice::parse(setting, value), None, "{setting}={value}");
+        }
+    }
+
+    #[test]
+    fn following_the_system_is_chosen_until_a_theme_is() {
+        let system = Choice::Theme(None);
+        assert!(system.chosen(Prefs::default()));
+        assert_eq!(system.kept(), None);
+        let night = Prefs::from_cookies([("atrium-theme", "dark")]);
+        assert!(!system.chosen(night));
+        assert!(Choice::Theme(Some(Theme::Dark)).chosen(night));
+        assert!(Choice::Intensity(Intensity::Normal).chosen(night));
+        assert!(!Choice::Intensity(Intensity::Calm).chosen(night));
     }
 }

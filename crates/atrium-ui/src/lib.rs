@@ -5,13 +5,14 @@
 pub mod assets;
 pub mod components;
 pub mod draw;
+pub mod settings;
 pub mod words;
 
 use std::fmt;
 use std::future::{Future, ready};
 use std::sync::Arc;
 
-use atrium_core::{HomeOffer, Intensity, Local, NavEntry, Prefs, Search, Visit};
+use atrium_core::{HomeOffer, Local, NavEntry, Search, Visit};
 use axum::extract::FromRequestParts;
 use axum::http::StatusCode;
 use axum::http::request::Parts;
@@ -19,7 +20,7 @@ use axum::response::{IntoResponse, Response};
 use maud::{DOCTYPE, Markup, PreEscaped, html};
 
 use crate::components::cmd_line;
-use crate::draw::glyph;
+use crate::draw::{glyph, sliders};
 
 /// The id of the element the skip link leads to.
 pub const MAIN: &str = "main";
@@ -181,6 +182,12 @@ impl Shell {
         self.chrome.search.map(|search| search.pages)
     }
 
+    /// How many sections the navigation has, which keys `1` up to it reach.
+    #[must_use]
+    pub fn sections(&self) -> usize {
+        self.chrome.nav.len()
+    }
+
     /// A 200 page.
     #[must_use]
     pub fn page(&self, page: Page) -> Response {
@@ -269,9 +276,9 @@ impl Shell {
         // The drawings of places fill their faces from patterns every page defines once.
         let places = body.contains(r#"<g class="m""#);
         let modules = if page.since {
-            "keys light carry since"
+            "keys light carry prefs since"
         } else {
-            "keys light carry"
+            "keys light carry prefs"
         };
         html! {
             (DOCTYPE)
@@ -320,12 +327,17 @@ impl Shell {
                             time.clock datetime=(local.iso(local.seconds())) data-module="clock" {
                                 (local.hm(local.seconds()))
                             }
-                            (controls("mast", *prefs))
                             a.jump.btn href=(self.search()) data-module="palette" data-pages=[self.pages()]
                                 aria-keyshortcuts="Control+K Meta+K"
                             {
                                 span { "Jump" }
                                 kbd.kbd-ctrl { "Ctrl K" }
+                            }
+                            a.settings-btn.btn href=(settings::PATH) title="Settings"
+                                aria-current=[(self.path == settings::PATH).then_some("page")]
+                            {
+                                (sliders("sliders"))
+                                span.vh { "Settings" }
                             }
                         }
                     }
@@ -336,15 +348,6 @@ impl Shell {
                                 Some(line) => (line),
                                 None => "The wiki did not answer.",
                             }
-                        }
-                        (controls("foot", *prefs))
-                        p.foot-keys {
-                            kbd { "1" } "–" kbd { (chrome.nav.len()) } " sections, "
-                            kbd { "j" } " " kbd { "k" } " rows, "
-                            kbd { "/" } " search, "
-                            kbd { "Ctrl K" } " jump, "
-                            kbd { "T" } " theme, "
-                            kbd { "F" } " field"
                         }
                     }
                 }
@@ -418,45 +421,9 @@ pub fn home(shell: &Shell, offers: &[(&'static str, HomeOffer)]) -> Page {
     page
 }
 
-/// The field intensity, the night theme and the letter keys, as the masthead and the footer
-/// both offer them. Each button shows the reader's setting.
-fn controls(place: &str, prefs: Prefs) -> Markup {
-    let swatch = |level: Intensity, title: &str, label: &str| {
-        html! {
-            button.swatch type="button" data-intensity=(level.name())
-                aria-pressed=(prefs.intensity == level) title=(title)
-            {
-                (glyph(&format!("sw sw-{}", level.name()), ""))
-                span.vh { (label) }
-            }
-        }
-    };
-    let dark = prefs.theme == Some(atrium_core::Theme::Dark);
-    html! {
-        div class={ "prefs prefs-" (place) " js-only" } data-module="prefs" {
-            div.intensity role="group" aria-label="Field intensity" {
-                span.pref-label aria-hidden="true" { "Field" }
-                (swatch(Intensity::Calm, "Calm: the field holds still", "Calm"))
-                (swatch(Intensity::Normal, "Normal: the field breathes and follows the pointer", "Normal"))
-                (swatch(Intensity::Lively, "Lively: a trail, ripples on click, packets on the lines", "Lively"))
-            }
-            button.theme-btn type="button" aria-pressed=(dark) title="Night theme" {
-                span.theme-ico aria-hidden="true" {}
-                span.vh { "Night theme" }
-            }
-            button.keys-btn type="button" aria-pressed=(prefs.letter_keys)
-                title="Single-letter keys: on, keys such as j and 1 work without Ctrl"
-            {
-                span.keys-ico aria-hidden="true" { "j" }
-                span.vh { "Single-letter keys" }
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use atrium_core::{Prefs, Theme};
+    use atrium_core::{Intensity, Prefs, Theme};
     use jiff::tz::TimeZone;
 
     use super::*;
@@ -519,27 +486,63 @@ mod tests {
         );
     }
 
+    const NIGHT: Prefs = Prefs {
+        theme: Some(Theme::Dark),
+        intensity: Intensity::Calm,
+        letter_keys: false,
+    };
+
     #[test]
     fn the_page_carries_the_hour_and_the_readers_settings() {
-        let page = document(
-            "/",
-            Prefs {
-                theme: Some(Theme::Dark),
-                intensity: Intensity::Calm,
-                letter_keys: false,
-            },
-        );
+        let page = document("/", NIGHT);
         assert!(page.contains(r#"<html lang="en" data-hour="9" data-intensity="calm" data-theme="dark" data-keys="off" data-entrance="full">"#), "{page}");
-        assert!(
-            page.contains(
-                r#"class="swatch" type="button" data-intensity="calm" aria-pressed="true""#
-            )
-        );
-        assert!(page.contains(r#"class="keys-btn" type="button" aria-pressed="false""#));
         let plain = document("/", Prefs::default());
         assert!(plain.contains(
             r#"<html lang="en" data-hour="9" data-intensity="normal" data-entrance="full">"#
         ));
+    }
+
+    #[test]
+    fn the_top_bar_links_the_settings_and_no_page_carries_their_controls() {
+        let page = document("/wiki", Prefs::default());
+        assert!(page.contains(r#"<a class="settings-btn btn" href="/settings" title="Settings"><svg class="sliders""#), "{page}");
+        assert!(page.contains(r#"<span class="vh">Settings</span>"#));
+        for gone in ["swatch", "theme-btn", "keys-btn", "foot-keys", "Field"] {
+            assert!(!page.contains(gone), "{gone}");
+        }
+        let settings = shell(settings::PATH, Prefs::default())
+            .document(settings::page(&shell(settings::PATH, Prefs::default())))
+            .into_string();
+        assert!(settings.contains(r#"href="/settings" title="Settings" aria-current="page">"#));
+    }
+
+    #[test]
+    fn the_settings_page_presses_the_readers_choices() {
+        let page = |prefs| {
+            let shell = shell(settings::PATH, prefs);
+            shell.document(settings::page(&shell)).into_string()
+        };
+        let pressed = |page: &str| -> Vec<String> {
+            page.split("<button ")
+                .skip(1)
+                .filter(|button| button.contains(r#"aria-pressed="true""#))
+                .filter_map(|button| button.split(r#"value=""#).nth(1)?.split('"').next())
+                .map(str::to_owned)
+                .collect()
+        };
+        assert_eq!(pressed(&page(Prefs::default())), ["system", "normal", "on"]);
+        assert_eq!(pressed(&page(NIGHT)), ["dark", "calm", "off"]);
+        let plain = page(Prefs::default());
+        assert_eq!(
+            plain
+                .matches(r#"<form class="setting prefs" method="post" action="/settings">"#)
+                .count(),
+            3
+        );
+        assert!(plain.contains(
+            r#"<button class="btn" type="submit" name="theme" value="system" aria-pressed="true" aria-describedby="theme-system">"#
+        ));
+        assert!(plain.contains("<dd>sections</dd>"));
     }
 
     #[test]

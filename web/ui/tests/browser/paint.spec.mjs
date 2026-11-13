@@ -44,39 +44,30 @@ test('entrance: the whole entrance on arrival, the short one on the next page', 
   expect(await next.text()).toMatch(/<html[^>]* data-entrance="short"/);
 });
 
-// Records, for every frame until the page has settled, whether the settings show and
-// which animation the first surface runs, from before the page's own scripts.
+// Records, for every frame until the page has settled, which animation the first surface
+// runs, from before the page's own scripts.
 const frames = (page) => page.addInitScript(() => {
   window.painted = [];
   const look = () => {
-    const prefs = document.querySelector('.prefs-mast');
     const surface = document.querySelector('main .surface');
-    if (prefs && surface) {
-      window.painted.push({
-        prefs: getComputedStyle(prefs).display,
-        entrance: getComputedStyle(surface).animationName,
-      });
-    }
+    if (surface) window.painted.push(getComputedStyle(surface).animationName);
     if (window.painted.length < 20) requestAnimationFrame(look);
   };
   requestAnimationFrame(look);
 });
 
-test('first paint: with scripts on, the settings show and the entrance runs from the first frame', async ({ page }) => {
+test('first paint: with scripts on, the entrance runs from the first frame', async ({ page }) => {
   await frames(page);
   await open(page, 'wiki');
   await expect.poll(() => page.evaluate(() => window.painted.length)).toBe(20);
-  const painted = await page.evaluate(() => window.painted);
-  expect(new Set(painted.map((frame) => frame.prefs))).toEqual(new Set(['flex']));
-  expect(new Set(painted.map((frame) => frame.entrance))).toEqual(new Set(['develop, rise']));
+  expect(new Set(await page.evaluate(() => window.painted))).toEqual(new Set(['develop, rise']));
 });
 
 test.describe('scripts off', () => {
   test.use({ javaScriptEnabled: false });
-  test('first paint: with scripts off, no settings and no entrance', async ({ page }) => {
+  test('first paint: with scripts off, no entrance, and the settings are a link away', async ({ page }) => {
     await page.goto(url('wiki'));
-    await expect(page.locator('.prefs-mast')).toBeHidden();
-    await expect(page.locator('.prefs-mast .theme-btn')).toBeHidden();
+    await expect(page.getByRole('link', { name: 'Settings', exact: true })).toBeVisible();
     expect(await page.locator('main .surface').first().evaluate((s) => getComputedStyle(s).animationName)).toBe('none');
   });
 });

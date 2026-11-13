@@ -9,5 +9,6 @@ mod local;
 mod output;
 mod process;
 mod real;
+mod settings;
 mod support;
 mod wiki;

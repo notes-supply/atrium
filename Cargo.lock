@@ -95,6 +95,7 @@ dependencies = [
  "reqwest",
  "scraper",
  "serde_json",
+ "serde_urlencoded",
  "sha2",
  "tempfile",
  "tokio",

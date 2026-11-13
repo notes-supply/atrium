@@ -15,7 +15,7 @@ cargo run -- --viewer member --mneme-url http://127.0.0.1:8081
 
 | Path | Holds |
 | --- | --- |
-| `crates/atrium` | The server: configuration (`src/lib.rs`), the registry (`src/features.rs`) and home (`src/features/home.rs`), middleware, the visit cookie, assets, the request log, and the Mneme that `--wiki-folder` starts (`src/local.rs`). |
+| `crates/atrium` | The server: configuration (`src/lib.rs`), the registry (`src/features.rs`), home (`src/features/home.rs`) and the settings (`src/features/settings.rs`), middleware, the visit cookie, assets, the request log, and the Mneme that `--wiki-folder` starts (`src/local.rs`). |
 | `crates/atrium-core` | The contract: `Feature`, `Access`, `Viewer`, `NavEntry`, `Search`, `HomeContext` and `HomeOffer`, and the visit and preferences a page is written for. |
 | `crates/atrium-ui` | The design: the page shell, components, drawings, stylesheet and fonts. |
 | `crates/atrium-wiki` | The wiki: Mneme's client, one module per page, Markdown rendering, and stand-ins for Mneme for tests and the demo. |

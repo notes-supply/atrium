@@ -1,13 +1,36 @@
 /* What the server adds to the prototype's rules. */
 
-/* The letter-key switch sits beside the night theme and looks like it. Pressed, the keys
-   work; released, the letter is struck through and only keys with Ctrl or Cmd work. */
-.keys-btn { width: 28px; height: 28px; display: inline-grid; place-items: center; padding: 0; border: 1px solid transparent; background: none; color: var(--ink-2); cursor: pointer; transition: scale var(--t-press) var(--spring), border-color var(--t-quick); }
-.keys-btn:is(:hover, [data-force~="hover"]) { border-color: var(--rule-2); color: var(--ink); }
-.keys-btn:is(:active, [data-force~="active"]) { scale: .86; transition-duration: 60ms; }
-.keys-btn[aria-pressed="true"] { border-color: var(--ink); color: var(--ink); }
-.keys-ico { font: 500 var(--fs-mono-l)/1 var(--mono); }
-.keys-btn[aria-pressed="false"] .keys-ico { text-decoration: line-through; }
+/* The settings button sits beside Jump, as tall as it and about as wide, and stays pressed
+   on the settings page. Its mark is two sliders in square cells, as the glyph is drawn. */
+.settings-btn { align-self: stretch; padding: 0 6px; }
+.settings-btn[aria-current="page"] { color: var(--paper); }
+.settings-btn[aria-current="page"]::before { background: var(--ink); }
+.sliders { width: 14px; height: 14px; shape-rendering: crispEdges; }
+.sliders rect { fill: currentColor; }
+
+/* The settings page: each setting a form of buttons that each post one choice, with what
+   the choice does beneath it, and the keys beside them. */
+.settings-list { grid-column: 1 / 9; padding: 0 26px; align-self: start; }
+.setting { display: grid; gap: var(--s-4); padding: 22px 0 26px; }
+.setting + .setting { border-top: 1px solid var(--rule); }
+.setting h2 { font-size: var(--fs-h2); }
+.choices { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s-4) var(--s-6); }
+.choice { display: grid; gap: var(--s-3); align-content: start; justify-items: start; }
+.choice-note { font-size: 16px; line-height: 1.4; color: var(--ink-2); }
+.keyboard { grid-column: 9 / -1; padding: 20px 22px 22px; display: grid; gap: var(--s-4); align-self: start; }
+.key-list { margin: 0; display: grid; gap: var(--s-3); font: 400 var(--fs-mono-l)/1.4 var(--mono); }
+.key-list div { display: grid; grid-template-columns: 6.5em 1fr; gap: var(--s-3); align-items: baseline; }
+.key-list dt { white-space: nowrap; }
+.key-list dd { margin: 0; color: var(--ink-2); }
+@media (max-width: 899px) {
+  .settings-list, .keyboard { align-self: stretch; }
+  .settings-list { padding: 0 16px; }
+  .setting { padding: 18px 0 20px; }
+  .choices { grid-template-columns: auto minmax(0, 1fr); gap: var(--s-3) var(--s-4); align-items: baseline; }
+  .choice { display: contents; }
+  .choice .btn { justify-self: start; }
+  .keyboard { padding: 18px 16px; }
+}
 
 /* Slots the browser modules fill, such as "Continue reading", stay out of the layout until
    then, whatever display their class gives them. */
