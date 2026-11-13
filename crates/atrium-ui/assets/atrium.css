@@ -199,8 +199,11 @@ main { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); column-
 .change-list .kind { display: block; font: 400 var(--fs-mono)/1.4 var(--mono); color: var(--ink-3); }
 .change-list .who { font: 400 var(--fs-mono)/1 var(--mono); color: var(--ink-3); }
 .change-list .ov { display: block; font: 400 var(--fs-mono)/1.4 var(--mono); color: var(--warn); }
-.change-list li[data-new] time { color: var(--accent); font-weight: 500; }
-.change-list li[data-new]::before { content: ""; position: absolute; left: -22px; top: 15px; width: 8px; height: 8px; background: repeating-conic-gradient(var(--accent) 0 25%, transparent 0 50%) 0 0 / 2px 2px; }
+/* What is new since the last visit is marked in the gutter left of the time, clear of the
+   card's edge, and centred on the time's first line. */
+.change-list { --mark: var(--s-2); --mark-gap: var(--s-2); }
+.change-list li[data-new] time { position: relative; color: var(--accent); font-weight: 500; }
+.change-list li[data-new] time::before { content: ""; position: absolute; left: calc(-1 * (var(--mark) + var(--mark-gap))); top: calc((1lh - var(--mark)) / 2); width: var(--mark); height: var(--mark); background: repeating-conic-gradient(var(--accent) 0 25%, transparent 0 50%) 0 0 / 2px 2px; }
 .change-list .deleted .ttl, .change-list .ttl-gone { color: var(--ink-3); text-decoration: line-through var(--rule-2); }
 .change-list li:has(.ttl:focus-visible) { background: var(--accent-tint); }
 
@@ -716,7 +719,7 @@ mark { background: var(--accent-tint); color: var(--ink); padding: 0 .12em; box-
   .change-list li { grid-template-columns: 3.6em minmax(0, 1fr) auto; row-gap: 2px; }
   .change-list .who { grid-column: 2; grid-row: 2; }
   .change-list .delta { grid-column: 3; grid-row: 1; }
-  .change-list li[data-new]::before { left: -12px; }
+  .change-list { --mark-gap: var(--s-1); }
 
   .page-head h1 { font-size: 36px; }
   .wiki-list, .events { padding: 4px 14px 16px; }
