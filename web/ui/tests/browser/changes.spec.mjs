@@ -64,3 +64,14 @@ for (const [name, card] of [['index', '.changes'], ['changes', '.days']]) {
   }
 }
 
+// A space at the start of an inline-block's content collapses, so the arrow keeps its
+// distance by a margin.
+test('"All changes" keeps a space before its arrow', async ({ page }) => {
+  await open(page, 'index');
+  const after = await page.locator('.changes a.more').evaluate((more) => {
+    const css = getComputedStyle(more, '::after');
+    return { content: css.content, space: parseFloat(css.marginLeft) + parseFloat(css.paddingLeft) };
+  });
+  expect(after.content).toBe('"→"');
+  expect(after.space).toBeGreaterThanOrEqual(4);
+});
