@@ -14,7 +14,7 @@ use std::time::Instant;
 use axum::Router;
 use maud::Markup;
 
-pub use crate::visit::{Entrance, Intensity, Local, Prefs, Theme, Visit};
+pub use crate::visit::{Choice, Entrance, Intensity, Local, Prefs, Theme, Visit};
 
 /// Who is asking. A listener serves one kind of viewer, set when the server starts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

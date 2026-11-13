@@ -1,6 +1,7 @@
 //! Drawings made from code, as SVG the pages carry as they are: the map of the wiki, each place
-//! on its own, the week of versions, a page's 90 days, and the resolution mark. Every colour is
-//! a CSS class, so the theme, the hour and focus stay in the stylesheet.
+//! on its own, the week of versions, a page's 90 days, the resolution mark and the settings
+//! button's sliders. Every colour is a CSS class, so the theme, the hour and focus stay in the
+//! stylesheet.
 //!
 //! The geometry is isometric boxes on a grid, projected and rounded to a tenth of a unit. A
 //! drawing of a place is chosen by its name, so the stylesheet can colour each one.
@@ -729,6 +730,19 @@ pub fn glyph(class: &str, extra: &str) -> Markup {
     }
     out.push_str("</svg>");
     PreEscaped(out)
+}
+
+/// The settings button's mark: two sliders, drawn in square cells as the glyph is.
+#[must_use]
+pub fn sliders(class: &str) -> Markup {
+    html! {
+        svg class=(class) viewBox="0 0 7 7" aria-hidden="true" focusable="false" {
+            rect x="0" y="1" width="7" height="1" {}
+            rect x="4" y="0" width="2" height="3" {}
+            rect x="0" y="5" width="7" height="1" {}
+            rect x="1" y="4" width="2" height="3" {}
+        }
+    }
 }
 
 /// What the resolution mark stands for.

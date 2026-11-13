@@ -85,6 +85,16 @@ test('a setting runs in place', async ({ page }) => {
   await expect(page.locator('dialog.palette')).toBeHidden();
 });
 
+test('the palette leads to the settings page', async ({ page }) => {
+  await open(page, 'wiki');
+  await page.keyboard.press('Control+k');
+  await page.keyboard.type('settings');
+  const first = page.locator('dialog.palette [role=option]').first();
+  await expect(first.locator('.pi-t')).toHaveText('Settings');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/\/settings$/);
+});
+
 test('home has the same list inline, without the settings, under the command line', async ({ page }) => {
   await open(page, 'index');
   const input = page.locator('#cmd-q');

@@ -120,20 +120,20 @@ test('field: holds a still frame under reduced motion', async ({ page }) => {
 // settle, never more frames.
 test('field: settles to a still frame in calm', async ({ page }) => {
   await countFrames(page);
-  await open(page, 'wiki', FULL);
+  await open(page, 'settings', FULL);
   await expect(page.locator('html')).toHaveClass(/\bgl-on\b/);
   await keepsAsking(page);
-  await page.locator('.prefs-mast .swatch[data-intensity=calm]').click();
+  await page.locator('form.prefs button[name=intensity][value=calm]').click();
   await page.mouse.move(5, 5);
   await expect.poll(() => framesOver(page, 600), { message: 'still', timeout: 20_000 }).toBe(0);
 });
 
 test('field: takes the night colours when the theme switches', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
-  await open(page, 'wiki', FULL);
+  await open(page, 'settings', FULL);
   const [day] = await sample(page, []);
   await page.evaluate(() => window.__field.pause(false));
-  await page.locator('.prefs-mast .theme-btn').click();
+  await page.locator('form.prefs button[name=theme][value=dark]').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
   const [night] = await sample(page, []);
   const light = (rgb) => rgb[0] + rgb[1] + rgb[2];

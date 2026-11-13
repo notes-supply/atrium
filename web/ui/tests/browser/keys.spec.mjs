@@ -21,15 +21,13 @@ test('/ focuses the search field on the search page', async ({ page }) => {
   await expect(page.locator('#q')).toBeFocused();
 });
 
-test('t switches the theme and f steps the field', async ({ page }) => {
+test('t switches the theme', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'light' });
   await open(page, 'wiki');
   await page.keyboard.press('t');
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await page.keyboard.press('f');
-  await expect(page.locator('html')).toHaveAttribute('data-intensity', 'lively');
-  await page.keyboard.press('f');
-  await expect(page.locator('html')).toHaveAttribute('data-intensity', 'calm');
+  await page.keyboard.press('t');
+  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
 });
 
 test('j and k move through the rows and Enter opens one', async ({ page }) => {

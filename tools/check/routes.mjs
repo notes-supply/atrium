@@ -1,6 +1,7 @@
-// Every server route with its prototype page, addressed as `atrium --demo` serves them. The
-// ids are the demo's (crates/atrium-wiki/src/demo.rs); a test there keeps them the same.
-// `away` routes are served by a second demo, `atrium --demo away`, on the next port.
+// Every server route with its prototype page, where the design has one, addressed as
+// `atrium --demo` serves them. The ids are the demo's (crates/atrium-wiki/src/demo.rs); a test
+// there keeps them the same. `away` routes are served by a second demo, `atrium --demo away`,
+// on the next port.
 const RESTIC = '/wiki/page/06746ebaa613d598';
 const V20 = 'ba0d8d9add8250f0c8cf49841c43ad453cf0f1a7';
 const V22 = 'ba0d8f9add825456c8cf47841c43a9df3cf0efa7';
@@ -16,6 +17,7 @@ export const ROUTES = [
   { name: 'changes', file: 'changes.html', path: '/wiki/changes' },
   { name: 'search', file: 'search.html', path: '/wiki/search?q=restic' },
   { name: 'machines', file: 'machines.html', path: '/wiki/machines' },
+  { name: 'settings', path: '/settings' },
   { name: 'away', file: 'away.html', path: '/', away: true },
   { name: '404', file: '404.html', path: '/wiki/homelab/printer.md' },
 ];

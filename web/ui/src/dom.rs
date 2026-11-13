@@ -45,12 +45,21 @@ pub fn say(kind: &str, detail: &JsValue) {
     }
 }
 
-/// Stores a preference for a year, where the server reads it on the next request.
+/// Stores a preference for a year, where the server reads it on the next request. The
+/// settings page's answer sets the same cookie (`features/settings.rs` in the server).
 pub fn remember(name: &str, value: &str) {
+    cookie(&[name, "=", value, "; path=/; max-age=31536000; samesite=lax"].concat());
+}
+
+/// Drops a preference, so the server's default applies.
+pub fn forget(name: &str) {
+    cookie(&[name, "=; path=/; max-age=0; samesite=lax"].concat());
+}
+
+fn cookie(line: &str) {
     if let Some(document) = document().and_then(|document| document.dyn_into::<HtmlDocument>().ok())
     {
-        let _ = document
-            .set_cookie(&[name, "=", value, "; path=/; max-age=31536000; samesite=lax"].concat());
+        let _ = document.set_cookie(line);
     }
 }
 

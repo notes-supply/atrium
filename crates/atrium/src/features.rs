@@ -2,6 +2,7 @@
 //! the command palette all come from this list.
 
 mod home;
+mod settings;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -25,7 +26,11 @@ pub fn registry(config: &Config, mneme_url: &str) -> Result<Vec<Arc<dyn Feature>
     if config.demo == Some(Demo::Away) {
         wiki.mneme().heard_at(atrium_wiki::demo::LAST_HEARD);
     }
-    Ok(vec![Arc::new(home::Home), Arc::new(wiki)])
+    Ok(vec![
+        Arc::new(home::Home),
+        Arc::new(wiki),
+        Arc::new(settings::Settings),
+    ])
 }
 
 /// The registry as one listener's viewer sees it.
@@ -68,7 +73,9 @@ impl Site {
     }
 
     /// Every visible feature's part of home, fetched at once, in registry order, each with
-    /// its name. A feature that overruns the deadline is shown as away.
+    /// its name. A feature that overruns the deadline is shown as away. A feature with no
+    /// part, such as home itself or the settings, is left out, so home names only those that
+    /// have one.
     pub async fn home(&self, context: &HomeContext) -> Vec<(&'static str, HomeOffer)> {
         let deadline = tokio::time::Instant::from_std(context.deadline) + GRACE;
         join_all(self.visible().map(|feature| async move {
@@ -81,6 +88,14 @@ impl Site {
             (feature.name(), offer)
         }))
         .await
+        .into_iter()
+        .filter(|(_, offer)| {
+            offer.away
+                || offer.figure.is_some()
+                || !offer.said.is_empty()
+                || !offer.tiles.is_empty()
+        })
+        .collect()
     }
 }
 
@@ -119,5 +134,34 @@ mod tests {
     fn navigation_addresses_are_unique() {
         let site = Site::new(registry(&config(), "http://mneme").unwrap(), Viewer::Member);
         assert_eq!(unique(site.nav().iter().map(|entry| entry.href)), Ok(()));
+    }
+
+    #[test]
+    fn the_settings_are_public_and_outside_the_navigation() {
+        let site = Site::new(
+            registry(&config(), "http://mneme").unwrap(),
+            Viewer::Anonymous,
+        );
+        let visible: Vec<_> = site.visible().map(|feature| feature.id()).collect();
+        assert_eq!(visible, ["settings"]);
+        assert_eq!(site.nav(), []);
+    }
+
+    #[tokio::test]
+    async fn home_names_only_the_features_with_a_part_in_it() {
+        let site = Site::new(
+            vec![Arc::new(home::Home), Arc::new(settings::Settings)],
+            Viewer::Member,
+        );
+        let context = HomeContext {
+            visit: atrium_core::Visit {
+                local: Local::new(jiff::Timestamp::UNIX_EPOCH, jiff::tz::TimeZone::UTC),
+                last: None,
+                prefs: atrium_core::Prefs::default(),
+                entrance: atrium_core::Entrance::Full,
+            },
+            deadline: std::time::Instant::now() + Duration::from_secs(1),
+        };
+        assert!(site.home(&context).await.is_empty());
     }
 }

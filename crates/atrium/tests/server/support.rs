@@ -4,7 +4,7 @@
 use atrium_wiki::stub::{self, Running, Stub};
 use clap::Parser;
 use reqwest::header::HeaderMap;
-use reqwest::{Client, redirect};
+use reqwest::{Client, Method, redirect};
 use tokio::net::TcpListener;
 
 pub struct Atrium {
@@ -22,6 +22,16 @@ pub struct Reply {
 impl Reply {
     pub fn header(&self, name: &str) -> Option<&str> {
         self.headers.get(name).and_then(|value| value.to_str().ok())
+    }
+
+    /// Every `Set-Cookie` but the visit's, which every page sets.
+    pub fn settings_cookies(&self) -> Vec<&str> {
+        self.headers
+            .get_all("set-cookie")
+            .iter()
+            .filter_map(|value| value.to_str().ok())
+            .filter(|cookie| !cookie.starts_with("atrium-visit="))
+            .collect()
     }
 }
 
@@ -72,7 +82,26 @@ impl Atrium {
     }
 
     pub async fn get_with(&self, path: &str, headers: &[(&str, &str)]) -> Reply {
-        let mut request = self.client.get(format!("{}{path}", self.url));
+        self.send(Method::GET, path, headers, "").await
+    }
+
+    /// A form's post of `body`, already encoded.
+    pub async fn post(&self, path: &str, body: &str) -> Reply {
+        let form = [("content-type", "application/x-www-form-urlencoded")];
+        self.send(Method::POST, path, &form, body).await
+    }
+
+    pub async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        headers: &[(&str, &str)],
+        body: &str,
+    ) -> Reply {
+        let mut request = self
+            .client
+            .request(method, format!("{}{path}", self.url))
+            .body(body.to_owned());
         for (name, value) in headers {
             request = request.header(*name, *value);
         }

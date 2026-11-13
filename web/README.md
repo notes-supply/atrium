@@ -40,7 +40,7 @@ The loader starts the field bundle when the page has `data-module="field"`, and 
 | `field` | `canvas.field` | `data-surface` on surfaces, `data-want` (1 or 2) on what wants the reader, `data-reading` on the article, the map's `.dock` and `.dock-card` with `data-m` and `data-want`, and `data-entrance` (`full` or `short`) on `<html>`. |
 | `palette` | the Jump link, and home's `.cmd` | `data-pages` on either: `/wiki/index.json`, answering `[{ "t", "path", "m", "href" }]`. Sections come from `.index a[data-key]`, named by their `data-title`. |
 | `keys` | `<body>` | `.index a[data-key]`, `main [data-row]`, `#q` or `.cmd input`. |
-| `prefs` | each `.prefs` | `.swatch[data-intensity]`, `.theme-btn`, and a `.keys-btn` for single-letter keys. |
+| `prefs` | `<body>` | on the settings page, each `form.prefs` with a submit button per choice, `name` the setting and `value` the choice. |
 | `swap` | the search form | `[data-swap-target]` and `[data-count]` in the page the form's action answers. |
 | `preview` | the article | `data-previews` on it: `/wiki/preview.json`, which answers `?href=` and a link's `data-preview` with `{ "path", "title", "text", "meta" }`. A card is fetched when the reader means the link, after a short hover or on focus, and kept for the page's life. |
 | `toc` | `details.toc` | links to `#id` headings. |
@@ -55,7 +55,7 @@ The clock, the greeting and the light follow the visitor's own clock. The server
 
 The light eases to a new hour, as a page opens on another hour than the server's or when the hour turns, over `--hour-ease`, forty minutes, in steps. Every thirty seconds `light` sets `--sun` and `--warm` on `<html>`, a step that moves no colour channel by more than one level of 255, and once the ease is over it takes them off, so the hour's own rule holds. Between steps the page does no work. Each hour's numbers are read back from the stylesheet, which stays the only place they are written. Under reduced motion the light takes the new hour at once, and a page asked for one hour with `?hour` keeps the hour it was written in. `light` tells the field to read its colours again when the hour turns, every two minutes of the ease and when it ends.
 
-The preferences are cookies the server reads on the next request: `atrium-intensity` (`calm`, `normal`, `lively`), `atrium-theme` (`light`, `dark`) and `atrium-keys` (`on`, `off`). The server writes each as `data-intensity`, `data-theme` and `data-keys` on `<html>`.
+The preferences are cookies the server reads on the next request: `atrium-intensity` (`calm`, `normal`, `lively`), `atrium-theme` (`light`, `dark`, or none to follow the system) and `atrium-keys` (`on`, `off`). The server writes each as `data-intensity`, `data-theme` and `data-keys` on `<html>`. Without scripts, the settings page's buttons post the choice to `/settings`, which sets the same cookie and leads back; with them, `prefs` sets it in place. `T` switches the theme on every page.
 
 The stylesheet carries `.pb-fill.pct-N` and `.pb-n.pct-N` for every N from 0 to 100, and keeps `hidden` slots hidden. Rules that only need scripts on ask `@media (scripting: enabled)`, so they hold from the first paint; `gl-on`, which the field sets once it draws, is the one class a module adds for the stylesheet.
 

@@ -15,7 +15,7 @@ cargo run -- --viewer member --mneme-url http://127.0.0.1:8081
 
 | Path | Holds |
 | --- | --- |
-| `crates/atrium` | The server: configuration (`src/lib.rs`), the registry (`src/features.rs`) and home (`src/features/home.rs`), middleware, the visit cookie, assets, the request log, and the Mneme that `--wiki-folder` starts (`src/local.rs`). |
+| `crates/atrium` | The server: configuration (`src/lib.rs`), the registry (`src/features.rs`), home (`src/features/home.rs`) and the settings (`src/features/settings.rs`), middleware, the visit cookie, assets, the request log, and the Mneme that `--wiki-folder` starts (`src/local.rs`). |
 | `crates/atrium-core` | The contract: `Feature`, `Access`, `Viewer`, `NavEntry`, `Search`, `HomeContext` and `HomeOffer`, and the visit and preferences a page is written for. |
 | `crates/atrium-ui` | The design: the page shell, components, drawings, stylesheet and fonts. |
 | `crates/atrium-wiki` | The wiki: Mneme's client, one module per page, Markdown rendering, and stand-ins for Mneme for tests and the demo. |
@@ -55,7 +55,7 @@ The gate builds the Wasm bundles and holds them to their size budgets, checks fo
 
 `mise run capture` records a short visit to the demo and screenshots home, a page and the machines at both widths in day and night, into `target/check/final`.
 
-`mise run screenshots` makes the screenshots in `docs/images` again: home in day and night, a page, a diff and the machines, at 1440 by 900. Reduced motion holds the field on its still frame, so a run draws the same pictures as the last, though a few pixels of the theme button's gradient, which Chromium dithers, may differ by one level of colour.
+`mise run screenshots` makes the screenshots in `docs/images` again: home in day and night, a page, a diff and the machines, at 1440 by 900. Reduced motion holds the field on its still frame, so a run draws the same pictures as the last.
 
 These run in Playwright's image through `tools/browser.sh`, which needs Docker and three free ports from `PORT` (18760 by default), and installs Playwright 1.64.1 and axe from `package-lock.json` with `npm ci` in the image.
 

@@ -79,14 +79,17 @@ fn bare(host: &str) -> &str {
         .unwrap_or(host)
 }
 
-/// The security headers, and `Cache-Control: no-store` on every response that has not set
-/// its own, which is every page.
+/// The security headers, `Referrer-Policy: no-referrer` on every response that has not set a
+/// policy of its own, which is every page but the settings, and `Cache-Control: no-store` on
+/// every response that has not set its own, which is every page.
 pub async fn headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
     headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
     headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
-    headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers
+        .entry(REFERRER_POLICY)
+        .or_insert(HeaderValue::from_static("no-referrer"));
     headers
         .entry(CACHE_CONTROL)
         .or_insert(HeaderValue::from_static("no-store"));

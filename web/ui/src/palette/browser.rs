@@ -415,7 +415,8 @@ fn close(engine: &Rc<RefCell<Engine>>) {
     }
 }
 
-/// Every destination: the sections by their links' `data-title`, the wiki's pages, the settings.
+/// Every destination: the sections by their links' `data-title`, the wiki's pages, and the
+/// settings page with the settings that run in place.
 fn items() -> Vec<Item> {
     let mut items = Vec::new();
     if let Some(root) = dom::root() {
@@ -432,6 +433,20 @@ fn items() -> Vec<Item> {
         }
     }
     SHARED.with_borrow(|shared| items.extend(shared.pages.iter().cloned()));
+    if let Some(link) = dom::document().and_then(|document| {
+        document
+            .query_selector(".mast a.settings-btn")
+            .ok()
+            .flatten()
+    }) {
+        items.push(Item {
+            group: SETTINGS,
+            title: SETTINGS.to_owned(),
+            sub: String::new(),
+            hint: String::new(),
+            action: Action::Go(link.get_attribute("href").unwrap_or_default()),
+        });
+    }
     items.push(Item {
         group: SETTINGS,
         title: "Switch day and night".to_owned(),

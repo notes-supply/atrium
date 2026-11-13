@@ -85,7 +85,7 @@ const server = await serve(process.env.PROTOTYPE);
 const browser = await chromium.launch();
 await mkdir(out, { recursive: true });
 const rows = [];
-for (const route of ROUTES.filter((r) => only.length === 0 || only.includes(r.name))) {
+for (const route of ROUTES.filter((r) => r.file && (only.length === 0 || only.includes(r.name)))) {
   for (const width of [1440, 390]) {
     for (const theme of ['light', 'dark']) {
       const base = route.away ? process.env.ATRIUM_AWAY_URL : process.env.ATRIUM_URL;
