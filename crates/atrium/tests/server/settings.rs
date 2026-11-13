@@ -16,6 +16,16 @@ async fn every_viewer_may_see_the_settings_and_every_page_links_them() {
         check("/settings", &reply.body);
         assert_eq!(texts(&reply.body, "h1"), ["Settings"]);
         assert_eq!(
+            reply.header("referrer-policy"),
+            Some("same-origin"),
+            "{viewer}: its posts carry its origin"
+        );
+        assert_eq!(
+            atrium.get("/no-such-page").await.header("referrer-policy"),
+            Some("no-referrer"),
+            "{viewer}"
+        );
+        assert_eq!(
             attrs(
                 &atrium.get("/no-such-page").await.body,
                 ".mast a.settings-btn",
@@ -165,4 +175,80 @@ async fn a_choice_naming_an_unknown_host_is_refused() {
         .await;
     assert_eq!(reply.status, 421);
     assert_eq!(reply.header("set-cookie"), None);
+}
+
+const FORM: (&str, &str) = ("content-type", "application/x-www-form-urlencoded");
+
+#[tokio::test]
+async fn a_form_posted_from_atriums_own_page_is_taken() {
+    let atrium = Atrium::member().await;
+    let reply = atrium
+        .send(
+            Method::POST,
+            "/settings",
+            &[
+                FORM,
+                ("origin", &atrium.url),
+                ("sec-fetch-site", "same-origin"),
+            ],
+            "theme=dark",
+        )
+        .await;
+    assert_eq!(reply.status, 303);
+    assert_eq!(
+        reply.settings_cookies(),
+        ["atrium-theme=dark; Path=/; Max-Age=31536000; SameSite=Lax"]
+    );
+}
+
+#[tokio::test]
+async fn a_post_with_no_origin_is_taken() {
+    let atrium = Atrium::member().await;
+    let reply = atrium
+        .send(Method::POST, "/settings", &[FORM], "keys=off")
+        .await;
+    assert_eq!(reply.status, 303);
+    assert_eq!(
+        reply.settings_cookies(),
+        ["atrium-keys=off; Path=/; Max-Age=31536000; SameSite=Lax"]
+    );
+}
+
+#[tokio::test]
+async fn a_post_from_another_origin_is_refused_and_sets_nothing() {
+    let atrium = Atrium::member().await;
+    let (host, _) = atrium.url.rsplit_once(':').unwrap();
+    let other_port = format!("{host}:1");
+    for origin in ["http://evil.example", other_port.as_str(), "null"] {
+        let reply = atrium
+            .send(
+                Method::POST,
+                "/settings",
+                &[FORM, ("origin", origin)],
+                "theme=dark",
+            )
+            .await;
+        assert_eq!(reply.status, 403, "{origin}");
+        assert_eq!(reply.body, "not from this site\n", "{origin}");
+        assert_eq!(reply.settings_cookies(), Vec::<&str>::new(), "{origin}");
+    }
+}
+
+#[tokio::test]
+async fn a_post_the_browser_calls_cross_site_is_refused() {
+    let atrium = Atrium::member().await;
+    for headers in [
+        &[FORM, ("sec-fetch-site", "cross-site")][..],
+        &[
+            FORM,
+            ("sec-fetch-site", "cross-site"),
+            ("origin", &atrium.url),
+        ],
+    ] {
+        let reply = atrium
+            .send(Method::POST, "/settings", headers, "intensity=calm")
+            .await;
+        assert_eq!(reply.status, 403, "{headers:?}");
+        assert_eq!(reply.settings_cookies(), Vec::<&str>::new(), "{headers:?}");
+    }
 }

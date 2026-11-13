@@ -95,7 +95,10 @@ test.describe('scripts off', () => {
 
   test('each choice posts, and the page comes back with it pressed and drawn', async ({ page }) => {
     await page.goto(url('settings'));
+    const posted = page.waitForRequest((request) => request.method() === 'POST');
     await choice(page, 'theme', 'dark').click();
+    const sent = await (await posted).allHeaders();
+    expect([sent.origin, sent['sec-fetch-site']]).toEqual([new URL(url('settings')).origin, 'same-origin']);
     await expect(page).toHaveURL(/\/settings$/);
     await expect(choice(page, 'theme', 'dark')).toHaveAttribute('aria-pressed', 'true');
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
