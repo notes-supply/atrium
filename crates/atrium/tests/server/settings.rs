@@ -55,12 +55,12 @@ async fn the_page_presses_the_readers_choices() {
 }
 
 #[tokio::test]
-async fn the_keyboard_lists_every_key() {
+async fn the_keyboard_lists_every_key_but_none_for_the_field() {
     let atrium = Atrium::member().await;
     let page = atrium.get("/settings").await.body;
     assert_eq!(
         texts(&page, ".key-list dd"),
-        ["sections", "rows", "search", "jump", "theme", "field"]
+        ["sections", "rows", "search", "jump", "theme"]
     );
     assert_eq!(texts(&page, ".key-list dt")[0], "1–5");
     for path in ["/", "/wiki", "/settings"] {
@@ -70,6 +70,7 @@ async fn the_keyboard_lists_every_key() {
             [texts(&page, ".foot-note")[0].clone()],
             "{path}: the footer is its note"
         );
+        assert!(!texts(&page, "kbd").contains(&"F".to_owned()), "{path}");
     }
 }
 

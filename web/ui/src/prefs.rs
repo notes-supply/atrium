@@ -7,8 +7,6 @@ use web_sys::Element;
 
 use crate::dom;
 
-const LEVELS: [&str; 3] = ["calm", "normal", "lively"];
-
 /// The buttons that each post one choice, as `name=value`.
 const CHOICE: &str = "form.prefs button[name][value]";
 
@@ -63,16 +61,6 @@ fn choose(name: &str, value: &str) {
 
 pub fn set_intensity(level: &str) {
     set("intensity", level);
-}
-
-/// The next level after the current one, from calm through lively and back.
-pub fn cycle_intensity() {
-    let current = attribute("intensity");
-    let at = LEVELS
-        .iter()
-        .position(|level| *level == current)
-        .map_or(0, |at| at + 1);
-    set_intensity(LEVELS[at % LEVELS.len()]);
 }
 
 pub fn toggle_theme() {

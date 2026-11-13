@@ -1,6 +1,6 @@
 //! The keyboard. 1 to 5 jump between sections, / searches, j and k move through the rows of
-//! a list and Enter opens one, T switches the theme, F steps the field. Hints show while
-//! the keyboard is in use. With single-letter keys switched off, only chords work.
+//! a list and Enter opens one, and T switches the theme. Hints show while the keyboard is in
+//! use. With single-letter keys switched off, only chords work.
 
 use wasm_bindgen::prelude::*;
 use web_sys::{
@@ -75,7 +75,6 @@ fn key(event: &KeyboardEvent) -> Option<()> {
             }
         }
         "t" | "T" => prefs::toggle_theme(),
-        "f" | "F" => prefs::cycle_intensity(),
         "j" | "k" => step(event, &root, key == "j"),
         _ => {}
     }

@@ -88,7 +88,6 @@ pub fn page(shell: &Shell) -> Page {
                     div { dt { kbd { "/" } } dd { "search" } }
                     div { dt { kbd.kbd-ctrl { "Ctrl K" } } dd { "jump" } }
                     div { dt { kbd { "T" } } dd { "theme" } }
-                    div { dt { kbd { "F" } } dd { "field" } }
                 }
             }
         }

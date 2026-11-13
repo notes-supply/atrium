@@ -543,6 +543,7 @@ mod tests {
             r#"<button class="btn" type="submit" name="theme" value="system" aria-pressed="true" aria-describedby="theme-system">"#
         ));
         assert!(plain.contains("<dd>sections</dd>"));
+        assert!(!plain.contains(">F<"), "no key for the field");
     }
 
     #[test]
