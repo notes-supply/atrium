@@ -73,7 +73,7 @@
 .open-preview { display: grid; gap: 12px; justify-items: start; padding: 28px 0 10px; }
 .open-preview p { color: var(--ink-2); font-size: 18px; max-width: 32em; }
 .open-preview .open-kind { font: 500 40px/1 var(--mono); letter-spacing: .02em; color: var(--ink-3); }
-.file-actions { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--rule); padding-top: 18px; }
+.file-actions { display: flex; gap: 14px; flex-wrap: wrap; border-top: 1px solid var(--rule); padding-top: 18px; }
 .download-btn .size { font-weight: 400; color: var(--ink-2); }
 
 /* A file among recent changes: its size where a page's words are. */
