@@ -467,6 +467,24 @@ async fn deep_page(atrium: &Atrium) -> String {
     atrium.get(found.header("location").unwrap()).await.body
 }
 
+/// A page moved out of `brand/`: its first version's image is the logo beside it then.
+async fn moved_page_version(atrium: &Atrium, logo: &str) {
+    let guide = atrium.get("/wiki/guide.md").await;
+    let history = atrium
+        .get(&format!("{}/history", guide.header("location").unwrap()))
+        .await;
+    let first = attrs(&history.body, "tbody a[href*='/at/']", "href")
+        .pop()
+        .unwrap();
+    let commit = first.rsplit('/').next().unwrap().to_owned();
+    let old_guide = atrium.get(&first).await;
+    assert_eq!(
+        attrs(&old_guide.body, "article img", "src"),
+        [format!("{logo}?at={commit}")],
+        "the moved page's old version"
+    );
+}
+
 async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
     let logo = "/wiki/raw/brand/logo.svg";
     for headers in [&[][..], &[("range", "bytes=5-14")][..]] {
@@ -540,21 +558,7 @@ async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
         "PK zipped bytes ".repeat(200)
     );
 
-    // A page moved out of `brand/`: its first version's image is the logo beside it then.
-    let guide = atrium.get("/wiki/guide.md").await;
-    let history = atrium
-        .get(&format!("{}/history", guide.header("location").unwrap()))
-        .await;
-    let first = attrs(&history.body, "tbody a[href*='/at/']", "href")
-        .pop()
-        .unwrap();
-    let commit = first.rsplit('/').next().unwrap().to_owned();
-    let old_guide = atrium.get(&first).await;
-    assert_eq!(
-        attrs(&old_guide.body, "article img", "src"),
-        [format!("{logo}?at={commit}")],
-        "the moved page's old version"
-    );
+    moved_page_version(atrium, logo).await;
 
     let gone = atrium.get("/wiki/raw/notes/todo.txt").await;
     assert_eq!(gone.status, 404);
