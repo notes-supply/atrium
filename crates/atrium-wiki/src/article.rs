@@ -10,6 +10,7 @@ use axum::extract::{Path, State};
 use axum::response::Response;
 use maud::{Markup, html};
 
+use crate::files::PageFiles;
 use crate::markdown::{self, Heading};
 use crate::mneme::{CommitId, Event, Events, Mneme, MnemeError, PageDetail, PageId, Window};
 use crate::routes::{Failure, bare, href, losers, overlap_mark, page_href, page_id, respond};
@@ -121,15 +122,19 @@ async fn page(shell: &Shell, mneme: &Mneme, id: &str) -> Result<Page, Failure> {
         mneme.versions(&id, 0, 500, Some(since)),
         mneme.status(),
     )?;
-    let losers = losers(mneme, &recent.events).await;
     let PageDetail {
         page,
         markdown,
         windows: counts,
     } = detail;
+    let text = markdown.as_deref().unwrap_or_default();
+    let (losers, files) = tokio::join!(
+        losers(mneme, &recent.events),
+        PageFiles::of(mneme, text, &page.path)
+    );
     let rendered = markdown
         .as_deref()
-        .map(|text| markdown::render(text, &page.path));
+        .map(|text| markdown::render(text, &page.path, files.links(None)));
     let href = page_href(&id);
     let history = format!("{href}/history");
     let newest = recent.events.first();
@@ -257,7 +262,15 @@ async fn old(shell: &Shell, mneme: &Mneme, id: &str, commit: &str) -> Result<Pag
     };
     let older = index.and_then(|i| step(i + 1));
     let newer = index.and_then(|i| i.checked_sub(1)).and_then(step);
-    let rendered = markdown::render(&version.markdown, &page.path);
+    // The text's relative links and images resolve from where the page was then, which a
+    // move since may have changed.
+    let path = event.map_or(page.path.as_str(), |event| event.path.as_str());
+    let files = PageFiles::of(mneme, &version.markdown, path).await;
+    let rendered = markdown::render(
+        &version.markdown,
+        path,
+        files.links(Some(version.commit.as_str())),
+    );
     let changed_since = href_diff(&href, &version.commit);
     let body = html! {
         main #(MAIN) .version {

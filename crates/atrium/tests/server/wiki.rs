@@ -203,7 +203,8 @@ async fn recent_changes_are_grouped_by_day_with_their_overlaps() {
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h2.day").len(), 1);
     let events = texts(&reply.body, ".days li");
-    assert_eq!(events.len(), 13);
+    assert_eq!(events.len(), 25, "13 changes to pages and 12 to files");
+    assert_eq!(texts(&reply.body, ".days li[data-file]").len(), 12);
     assert!(
         events[1].contains("Writer edited the same lines"),
         "{}",
@@ -354,7 +355,26 @@ async fn older_changes_are_the_days_before_the_time_the_address_names() {
         .body;
     assert_eq!(
         attrs(&reply, "h2.day time", "datetime"),
-        ["2026-11-08T21:14:00+01:00", "2026-11-07T20:41:00+01:00"]
+        [
+            "2026-11-08T21:14:00+01:00",
+            "2026-11-07T20:41:00+01:00",
+            "2026-10-05T11:00:00+02:00",
+            "2026-10-02T14:15:00+02:00",
+            "2026-09-20T21:40:00+02:00"
+        ],
+        "the pages' days, and the files'"
+    );
+    assert_eq!(
+        texts(&reply, "li[data-file] .kind"),
+        [
+            "file deleted, was brand/old-mark.png",
+            "file added in brand",
+            "file added in brand",
+            "file added in brand",
+            "file added in brand",
+            "file added in brand",
+            "file added in homelab"
+        ]
     );
     assert_eq!(
         attrs(&reply, ".pager a[rel=prev]", "href"),
@@ -500,10 +520,24 @@ async fn the_palette_finds_its_pages_at_the_url_the_page_names() {
         let page = page.as_object().unwrap();
         let mut keys: Vec<_> = page.keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["href", "m", "path", "t"], "{page:?}");
         assert!(page.values().all(serde_json::Value::is_string), "{page:?}");
-        assert!(page["href"].as_str().unwrap().starts_with("/wiki/page/"));
+        let href = page["href"].as_str().unwrap();
+        match page.get("g").and_then(serde_json::Value::as_str) {
+            None => {
+                assert_eq!(keys, ["href", "m", "path", "t"], "{page:?}");
+                assert!(href.starts_with("/wiki/page/"), "{page:?}");
+            }
+            Some("section") => assert_eq!(href, "/wiki/files"),
+            Some(group) => {
+                assert_eq!(group, "file", "{page:?}");
+                assert!(href.starts_with("/wiki/files/"), "{page:?}");
+            }
+        }
     }
+    let files: Vec<_> = pages.iter().filter(|page| page["g"] == "file").collect();
+    assert_eq!(files[0]["t"], "kit.zip", "newest first");
+    assert_eq!(files[0]["path"], "brand/kit.zip");
+    assert_eq!(files[0]["m"], "ZIP · 1.2 KiB");
 }
 
 #[tokio::test]
@@ -593,4 +627,90 @@ async fn the_record_is_called_what_its_setting_names_it_and_only_as_text() {
     );
     let home = atrium.get("/").await.body;
     assert_eq!(texts(&home, "#dock-laurel .dk-name"), [named], "home's map");
+}
+
+#[tokio::test]
+async fn a_day_busier_than_one_read_goes_on_on_the_next_page_and_loses_nothing() {
+    use atrium_wiki::stub::{BUSY_EARLIER, BUSY_FILES, BUSY_PAGES};
+    // More changes on one morning than one read holds, over a thousand of them in one second.
+    let atrium = Atrium::start(Stub::Busy, &["--viewer", "member"]).await;
+    let mut seen: Vec<String> = Vec::new();
+    let mut next = Some("/wiki/changes".to_owned());
+    let mut pages = 0;
+    let mut links = Vec::new();
+    while let Some(path) = next {
+        pages += 1;
+        links.push(path.clone());
+        assert!(pages < 20, "the pages never end");
+        let reply = atrium.get(&path).await;
+        assert_eq!(reply.status, 200, "{path}");
+        seen.extend(texts(&reply.body, ".days li .ttl"));
+        next = attrs(&reply.body, ".pager a[rel=next]", "href").pop();
+    }
+    let mut expected: Vec<String> = (0..BUSY_PAGES + BUSY_EARLIER)
+        .map(|i| format!("page-{i:04}"))
+        .chain((0..BUSY_FILES + BUSY_EARLIER).map(|i| format!("file-{i:04}.bin")))
+        .collect();
+    expected.sort();
+    let shown = seen.len();
+    seen.sort();
+    assert_eq!(seen, expected, "every change once");
+    assert_eq!(shown, expected.len());
+    assert!(
+        pages > 1,
+        "the busy morning took more than one page: {pages}"
+    );
+    assert!(
+        links.iter().any(|link| link.contains("files=1000")),
+        "a second that two pages could not hold goes on on a third: {links:?}"
+    );
+}
+
+/// Home's opening sentence for a reader last here at `last`, in front of `mneme`.
+async fn sentence_since(mneme: Stub, last: i64) -> String {
+    let atrium = Atrium::start(mneme, &["--viewer", "member"]).await;
+    let now = jiff::Timestamp::now().as_second();
+    let cookie = format!("atrium-visit={last}.{}", now - 60);
+    let home = atrium.get_with("/", &[("cookie", &cookie)]).await;
+    assert_eq!(home.status, 200);
+    texts(&home.body, "p.sentence")[0].clone()
+}
+
+#[tokio::test]
+async fn a_failed_call_for_the_files_never_says_nothing_changed() {
+    // After every change of the examples.
+    let last = 1_788_230_000;
+    let whole = sentence_since(Stub::Fixtures, last).await;
+    assert!(
+        whole.contains("Nothing changed since you were last here"),
+        "{whole}"
+    );
+    let failed = sentence_since(Stub::FileChangesFailing, last).await;
+    assert!(
+        failed.contains("No page changed since you were last here"),
+        "{failed}"
+    );
+    assert!(!failed.contains("Nothing changed"), "{failed}");
+}
+
+#[tokio::test]
+async fn more_files_changed_than_home_reads_are_counted_as_a_lower_bound() {
+    // Before the busy morning, so every change of it is new.
+    let said = sentence_since(Stub::Busy, 1_794_380_000).await;
+    assert!(
+        said.contains(" and 50 or more files changed since"),
+        "{said}"
+    );
+}
+
+#[tokio::test]
+async fn a_first_visit_with_the_files_call_failed_speaks_of_pages_only() {
+    let first = |mneme| async move {
+        let atrium = Atrium::start(mneme, &["--viewer", "member"]).await;
+        texts(&atrium.get("/").await.body, "p.sentence")[0].clone()
+    };
+    let whole = first(Stub::Fixtures).await;
+    assert!(whole.contains("The newest change was"), "{whole}");
+    let failed = first(Stub::FileChangesFailing).await;
+    assert!(failed.contains("The newest page change was"), "{failed}");
 }

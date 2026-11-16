@@ -154,6 +154,11 @@ pub trait Feature: Send + Sync {
     }
 }
 
+/// Marks a response that is a file's bytes, whatever its status, such as a `304` or a `416`:
+/// it is not a page the reader visited, so the server keeps no visit for it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileBytes;
+
 #[cfg(test)]
 mod tests {
     use super::*;

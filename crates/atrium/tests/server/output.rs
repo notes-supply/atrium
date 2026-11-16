@@ -18,7 +18,7 @@ const UNLINKED: &[(&str, u16)] = &[
 ];
 
 const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
-    style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; \
+    style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'; connect-src 'self'; \
     form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 fn keeps_the_rules(path: &str, reply: &Reply) {
@@ -38,7 +38,11 @@ async fn crawl(atrium: &Atrium) -> BTreeMap<String, u16> {
     let mut found = BTreeMap::new();
     let mut queue = VecDeque::from(["/".to_owned()]);
     while let Some(path) = queue.pop_front() {
-        if found.contains_key(&path) || path.starts_with("/assets/") {
+        // Assets and a file's bytes are not pages; their own tests check their headers.
+        if found.contains_key(&path)
+            || path.starts_with("/assets/")
+            || path.starts_with("/wiki/raw/")
+        {
             continue;
         }
         assert!(found.len() < 500, "the crawl does not end");

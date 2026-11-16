@@ -4,6 +4,7 @@
 )]
 
 mod access;
+mod files;
 mod html;
 mod local;
 mod output;

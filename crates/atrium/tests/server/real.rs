@@ -148,8 +148,17 @@ fn write_wiki(work: &Work, now: i64) {
     );
     work.write(
         "notes/deep.md",
-        "# Deep\n\nBack [home](../index.md). Nothing about ships.\n",
+        "# Deep\n\nBack [home](../index.md). Nothing about ships.\n\n\
+         ![The logo](../brand/logo.svg)\n\nThe [kit](../brand/archive/kit.zip).\n",
     );
+    work.write(
+        "brand/logo.svg",
+        r#"<svg xmlns="http://www.w3.org/2000/svg"><script>document.title="ran"</script><rect width="9" height="9"/></svg>"#,
+    );
+    work.write("brand/kit.zip", &"PK zipped bytes ".repeat(200));
+    work.write("notes/todo.txt", "Buy flour.\n");
+    work.write("notes/plan.txt", "Bake on Saturday.\n");
+    work.write("brand/guide.md", "# Guide\n\n![The logo](logo.svg)\n");
     work.commit("Start the wiki", start);
     work.write(
         "alpha.md",
@@ -157,6 +166,18 @@ fn write_wiki(work: &Work, now: i64) {
     );
     work.commit("Add a line", start + day);
     work.git(&["mv", "alpha.md", "greek-alpha.md"], start + 2 * day);
+    fs::create_dir_all(work.dir.join("brand/archive")).unwrap();
+    work.git(
+        &["mv", "brand/kit.zip", "brand/archive/kit.zip"],
+        start + 2 * day,
+    );
+    work.git(&["rm", "-q", "notes/todo.txt"], start + 2 * day);
+    fs::create_dir_all(work.dir.join("notes/plans")).unwrap();
+    work.git(
+        &["mv", "notes/plan.txt", "notes/plans/plan.txt"],
+        start + 2 * day,
+    );
+    work.git(&["mv", "brand/guide.md", "guide.md"], start + 2 * day);
     work.write(
         "index.md",
         "# Home\n\nStart at [Alpha](greek-alpha.md) or [the deep notes](notes/deep.md).\n",
@@ -167,6 +188,8 @@ fn write_wiki(work: &Work, now: i64) {
         "# Alpha\n\nThe first page talks about boats and quiet harbours.\n\nNow with a second line.\n\n\
          <script>alert(1)</script>\n\nA [Do not click](javascript:alert(1)) link.\n",
     );
+    // A new file takes the path the kit moved away from.
+    work.write("brand/kit.zip", "A new kit.\n");
     work.commit("Try a script", now - 3600);
 }
 
@@ -292,7 +315,7 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
     say("GET /wiki", texts(&list.body, "tbody tr"));
     let mut titles = texts(&list.body, "tbody a.ttl");
     titles.sort();
-    assert_eq!(titles, ["Alpha", "Deep", "Home"]);
+    assert_eq!(titles, ["Alpha", "Deep", "Guide", "Home"]);
     let alpha = attrs(&list.body, "tbody a.ttl", "href")
         .into_iter()
         .zip(texts(&list.body, "tbody a.ttl"))
@@ -424,6 +447,233 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
         shown.iter().all(|day| day.as_str() < days[1].as_str()),
         "{shown:?}"
     );
+
+    let files = reqwest::get(format!("{}/v1/files", atrium.mneme.base))
+        .await
+        .unwrap();
+    if files.status() == 404 {
+        without_files(&atrium, &say).await;
+    } else {
+        with_files(&atrium, &say).await;
+    }
+}
+
+/// The file headers Atrium passes back as Mneme sent them.
+const PASSED: [&str; 8] = [
+    "etag",
+    "content-type",
+    "content-length",
+    "content-disposition",
+    "accept-ranges",
+    "x-content-type-options",
+    "content-security-policy",
+    "content-range",
+];
+
+async fn deep_page(atrium: &Atrium) -> String {
+    let found = atrium.get("/wiki/notes/deep.md").await;
+    atrium.get(found.header("location").unwrap()).await.body
+}
+
+/// A page moved out of `brand/`: its first version's image is the logo beside it then.
+async fn moved_page_version(atrium: &Atrium, logo: &str) {
+    let guide = atrium.get("/wiki/guide.md").await;
+    let history = atrium
+        .get(&format!("{}/history", guide.header("location").unwrap()))
+        .await;
+    let first = attrs(&history.body, "tbody a[href*='/at/']", "href")
+        .pop()
+        .unwrap();
+    let commit = first.rsplit('/').next().unwrap().to_owned();
+    let old_guide = atrium.get(&first).await;
+    assert_eq!(
+        attrs(&old_guide.body, "article img", "src"),
+        [format!("{logo}?at={commit}")],
+        "the moved page's old version"
+    );
+}
+
+/// A path a file moved away from, and one a new file took since.
+async fn moved_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
+    // A path a file moved away from, which no file has taken since, leads to the file.
+    let old = atrium.get("/wiki/files/notes/plan.txt").await;
+    assert_eq!(old.status, 303);
+    assert_eq!(
+        old.header("location"),
+        Some("/wiki/files/notes/plans/plan.txt")
+    );
+    let old_bytes = atrium.get("/wiki/raw/notes/plan.txt").await;
+    assert_eq!(
+        old_bytes.header("location"),
+        Some("/wiki/raw/notes/plans/plan.txt")
+    );
+
+    // The kit's old path holds a new file now. Each change to a file at that path leads to
+    // the file it was: the first to the kit where it moved, the newest to the new file.
+    let new_kit = atrium.get("/wiki/files/brand/kit.zip").await;
+    assert_eq!(new_kit.status, 200);
+    assert_eq!(rows(&new_kit.body, ".file-events tbody tr").len(), 1);
+    assert_eq!(
+        atrium.get("/wiki/raw/brand/kit.zip").await.body,
+        "A new kit.\n"
+    );
+    let changes = atrium.get("/wiki/changes").await;
+    let at_kit: Vec<String> = attrs(&changes.body, "li[data-file] a.ttl", "href")
+        .into_iter()
+        .filter(|href| href.starts_with("/wiki/files/brand/kit.zip?at="))
+        .collect();
+    assert_eq!(at_kit.len(), 2, "{at_kit:?}");
+    let (newest, first) = (atrium.get(&at_kit[0]).await, atrium.get(&at_kit[1]).await);
+    say(
+        "GET the two changes at brand/kit.zip",
+        vec![
+            format!(
+                "{} {}",
+                newest.status,
+                newest.header("location").unwrap_or_default()
+            ),
+            format!(
+                "{} {}",
+                first.status,
+                first.header("location").unwrap_or_default()
+            ),
+        ],
+    );
+    assert_eq!(newest.status, 200, "the new file");
+    assert_eq!(first.status, 303);
+    assert_eq!(
+        first.header("location"),
+        Some("/wiki/files/brand/archive/kit.zip")
+    );
+}
+
+async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
+    let logo = "/wiki/raw/brand/logo.svg";
+    for headers in [&[][..], &[("range", "bytes=5-14")][..]] {
+        let reply = atrium.get_with(logo, headers).await;
+        let mut direct =
+            reqwest::Client::new().get(format!("{}/v1/raw/brand/logo.svg", atrium.mneme.base));
+        for (name, value) in headers {
+            direct = direct.header(*name, *value);
+        }
+        let direct = direct.send().await.unwrap();
+        assert_eq!(reply.status, direct.status().as_u16(), "{headers:?}");
+        say(
+            &format!("GET {logo} {headers:?}"),
+            PASSED
+                .iter()
+                .filter_map(|name| reply.header(name).map(|value| format!("{name}: {value}")))
+                .collect(),
+        );
+        for name in PASSED {
+            assert_eq!(
+                reply.header(name),
+                direct.headers().get(name).and_then(|v| v.to_str().ok()),
+                "{name} {headers:?}"
+            );
+        }
+        assert!(
+            reply
+                .header("cache-control")
+                .unwrap()
+                .starts_with("private")
+        );
+    }
+    let tag = atrium.get(logo).await.header("etag").unwrap().to_owned();
+    assert_eq!(
+        atrium
+            .get_with(logo, &[("if-none-match", &tag)])
+            .await
+            .status,
+        304
+    );
+    let head = atrium.send(reqwest::Method::HEAD, logo, &[], "").await;
+    assert_eq!(head.status, 200);
+    assert_eq!(head.body, "");
+
+    let deep = deep_page(atrium).await;
+    say(
+        "GET the deep page's image and file link",
+        attrs(&deep, "article img, article a.file-link", "src")
+            .into_iter()
+            .chain(texts(&deep, "article a.file-link"))
+            .collect(),
+    );
+    assert_eq!(attrs(&deep, "article img", "src"), [logo]);
+    assert_eq!(texts(&deep, "article a.file-link"), ["kit, ZIP, 3.1 KiB"]);
+
+    let list = atrium.get("/wiki/files").await;
+    say("GET /wiki/files", texts(&list.body, "tbody tr"));
+    assert_eq!(texts(&list.body, "tbody a.ttl"), ["brand/", "notes/"]);
+    let kit = atrium.get("/wiki/files/brand/archive/kit.zip").await;
+    let events = rows(&kit.body, ".file-events tbody tr");
+    say(
+        "GET the kit's page",
+        events.iter().map(|row| row.join(" | ")).collect(),
+    );
+    assert_eq!(events[0][2], "movedfrom brand/kit.zip");
+    let first = attrs(&kit.body, ".file-events a[download]", "href")
+        .pop()
+        .unwrap();
+    assert_eq!(
+        atrium.get(&first).await.body,
+        "PK zipped bytes ".repeat(200)
+    );
+
+    moved_page_version(atrium, logo).await;
+
+    moved_files(atrium, say).await;
+
+    let gone = atrium.get("/wiki/raw/notes/todo.txt").await;
+    assert_eq!(gone.status, 404);
+    assert_eq!(texts(&gone.body, ".gone .ttl-gone"), ["todo.txt"]);
+
+    let changes = atrium.get("/wiki/changes").await;
+    let files = texts(&changes.body, ".days li[data-file] .kind");
+    say("GET /wiki/changes, the files", files.clone());
+    assert!(
+        files.contains(&"file moved from brand/kit.zip".to_owned()),
+        "{files:?}"
+    );
+    assert!(
+        atrium
+            .get("/wiki/index.json")
+            .await
+            .body
+            .contains("\"g\":\"file\"")
+    );
+}
+
+async fn without_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
+    let deep = deep_page(atrium).await;
+    say(
+        "A Mneme without files: the deep page's image",
+        attrs(&deep, "article img", "src"),
+    );
+    assert_eq!(
+        attrs(&deep, "article img", "src"),
+        ["../brand/logo.svg"],
+        "as written"
+    );
+    assert_eq!(
+        attrs(&deep, "article.paper > p a", "href"),
+        ["/wiki/index.md", "../brand/archive/kit.zip"]
+    );
+    let list = atrium.get("/wiki").await;
+    assert_eq!(texts(&list.body, ".wiki-switch"), Vec::<String>::new());
+    let files = atrium.get("/wiki/files").await;
+    assert_eq!(files.status, 200);
+    say("GET /wiki/files", texts(&files.body, ".page-head .sub"));
+    let index = atrium.get("/wiki/index.json").await;
+    assert_eq!(index.status, 200);
+    assert!(!index.body.contains("\"g\""));
+    let changes = atrium.get("/wiki/changes").await;
+    assert_eq!(
+        texts(&changes.body, ".days li[data-file]"),
+        Vec::<String>::new()
+    );
+    let home = atrium.get("/").await;
+    assert!(!home.body.contains("briefly away"));
 }
 
 /// The titles the wiki's list shows, sorted.
@@ -497,7 +747,7 @@ async fn atrium_reads_a_wiki_folder_through_a_real_mneme_serve_folder() {
         &env,
     );
     let base = format!("http://{}", atrium.listening());
-    assert_eq!(titles(&base).await, ["Alpha", "Deep", "Home"]);
+    assert_eq!(titles(&base).await, ["Alpha", "Deep", "Guide", "Home"]);
     let search = reqwest::get(format!("{base}/wiki/search?q=harbour*"))
         .await
         .unwrap()

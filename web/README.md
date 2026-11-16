@@ -38,7 +38,7 @@ The loader starts the field bundle when the page has `data-module="field"`, and 
 | Module | Element | What it needs from the server |
 | --- | --- | --- |
 | `field` | `canvas.field` | `data-surface` on surfaces, `data-want` (1 or 2) on what wants the reader, `data-reading` on the article, the map's `.dock` and `.dock-card` with `data-m` and `data-want`, and `data-entrance` (`full` or `short`) on `<html>`. |
-| `palette` | the Jump link, and home's `.cmd` | `data-pages` on either: `/wiki/index.json`, answering `[{ "t", "path", "m", "href" }]`. Sections come from `.index a[data-key]`, named by their `data-title`. |
+| `palette` | the Jump link, and home's `.cmd` | `data-pages` on either: `/wiki/index.json`, answering `[{ "t", "path", "m", "href", "g"? }]`, where `g` is `file` for a file and `section` for a section the navigation leaves out, such as Files. Sections come from `.index a[data-key]`, named by their `data-title`, and from those entries. |
 | `keys` | `<body>` | `.index a[data-key]`, `main [data-row]`, `#q` or `.cmd input`. |
 | `prefs` | `<body>` | on the settings page, each `form.prefs` with a submit button per choice, `name` the setting and `value` the choice. |
 | `swap` | the search form | `[data-swap-target]` and `[data-count]` in the page the form's action answers. |

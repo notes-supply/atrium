@@ -21,9 +21,10 @@ use sha2::{Digest, Sha256};
 
 use crate::log;
 
-/// The policy for every response. `connect-src` lets the module loader fetch its `.wasm`.
+/// The policy for every response that has none of its own. `connect-src` lets the module
+/// loader fetch its `.wasm`, and `media-src` lets a file's page play its sound or film.
 pub const CSP: &str = "default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; \
-    style-src 'self'; img-src 'self'; font-src 'self'; connect-src 'self'; \
+    style-src 'self'; img-src 'self'; media-src 'self'; font-src 'self'; connect-src 'self'; \
     form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 /// Guards every route in `routes` with `access`. A viewer it does not admit gets the same 404
@@ -79,13 +80,17 @@ fn bare(host: &str) -> &str {
         .unwrap_or(host)
 }
 
-/// The security headers, `Referrer-Policy: no-referrer` on every response that has not set a
-/// policy of its own, which is every page but the settings, and `Cache-Control: no-store` on
-/// every response that has not set its own, which is every page.
+/// The security headers: Atrium's [`CSP`] on every response that has no policy of its own,
+/// which is every response but a file's bytes, whose policy is Mneme's and is never replaced
+/// or loosened; `Referrer-Policy: no-referrer` on every response that has not set a policy
+/// of its own, which is every page but the settings; and `Cache-Control: no-store` on every
+/// response that has not set its own, which is every page.
 pub async fn headers(request: Request, next: Next) -> Response {
     let mut response = next.run(request).await;
     let headers = response.headers_mut();
-    headers.insert(CONTENT_SECURITY_POLICY, HeaderValue::from_static(CSP));
+    headers
+        .entry(CONTENT_SECURITY_POLICY)
+        .or_insert(HeaderValue::from_static(CSP));
     headers.insert(X_CONTENT_TYPE_OPTIONS, HeaderValue::from_static("nosniff"));
     headers
         .entry(REFERRER_POLICY)
@@ -96,7 +101,8 @@ pub async fn headers(request: Request, next: Next) -> Response {
     response
 }
 
-/// A strong `ETag` over each rendered page, and 304 when the client has it already.
+/// A strong `ETag` over each rendered page, and 304 when the client has it already. A
+/// response with a tag of its own, such as a file's bytes, keeps it and is never read here.
 pub async fn etag(request: Request, next: Next) -> Response {
     let known = request.headers().get(IF_NONE_MATCH).cloned();
     let response = next.run(request).await;
@@ -104,7 +110,7 @@ pub async fn etag(request: Request, next: Next) -> Response {
         .headers()
         .get(CONTENT_TYPE)
         .is_some_and(|kind| kind.as_bytes().starts_with(b"text/html"));
-    if !html || !response.status().is_success() {
+    if !html || !response.status().is_success() || response.headers().contains_key(ETAG) {
         return response;
     }
     let (mut parts, body) = response.into_parts();

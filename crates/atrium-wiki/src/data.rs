@@ -2,7 +2,7 @@
 //! inline script: the palette's list of pages, and a page's preview for a link to it.
 
 use atrium_ui::Shell;
-use atrium_ui::words::number;
+use atrium_ui::words::{bytes, number};
 use axum::extract::rejection::QueryRejection;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
@@ -11,11 +11,11 @@ use axum::response::{IntoResponse, Response};
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use crate::markdown;
-use crate::mneme::{Filters, Listing, Mneme, MnemeError, Sort};
+use crate::mneme::{FileListing, FileSort, Filters, Listing, Mneme, MnemeError, Sort};
 use crate::routes::{bare, page_href};
+use crate::{kind, markdown};
 
-/// Pages the palette lists, at most.
+/// Pages, and files, the palette lists, at most.
 const MOST: u64 = 2000;
 
 fn answer(status: StatusCode, body: &Value) -> Response {
@@ -38,8 +38,66 @@ fn failed(error: &MnemeError) -> Response {
 }
 
 /// `GET /wiki/index.json`: every live page, newest first, as the palette lists them:
-/// `[{ "t": title, "path", "m": when, "href" }]`.
+/// `[{ "t": title, "path", "m": when, "href" }]`; then, from a Mneme that lists files, the
+/// files section and every live file, newest first, each with `"g"` its group, `section` or
+/// `file`, and the file's kind and size in `m`.
 pub async fn index(shell: Shell, State(mneme): State<Mneme>) -> Response {
+    let (pages, files) = tokio::join!(pages(&shell, &mneme), files(&mneme));
+    match (pages, files) {
+        (Ok(mut pages), Ok(files)) => {
+            if let Some(files) = files {
+                pages.push(json!({
+                    "t": "Files",
+                    "path": "",
+                    "m": "",
+                    "href": "/wiki/files",
+                    "g": "section",
+                }));
+                pages.extend(files);
+            }
+            answer(StatusCode::OK, &Value::Array(pages))
+        }
+        (Err(error), _) | (_, Err(error)) => failed(&error),
+    }
+}
+
+/// Every live file, newest first, up to [`MOST`], as the palette lists them, or `None` from a
+/// Mneme that lists none.
+async fn files(mneme: &Mneme) -> Result<Option<Vec<Value>>, MnemeError> {
+    let mut found = Vec::new();
+    let mut offset = 0;
+    while offset < MOST {
+        let listing = FileListing {
+            under: None,
+            words: None,
+            sort: Some(FileSort::Updated),
+            order: None,
+            offset,
+            limit: 500,
+        };
+        let Some(files) = mneme.files(listing).await? else {
+            return Ok(None);
+        };
+        let done = files.files.len() < 500;
+        found.extend(files.files.into_iter().map(|file| {
+            json!({
+                "t": kind::name(&file.path),
+                "path": file.path,
+                "m": format!("{} · {}", kind::label(&file.path), bytes(file.size)),
+                "href": kind::page_href(&file.path),
+                "g": "file",
+            })
+        }));
+        offset += 500;
+        if done || offset >= files.total {
+            break;
+        }
+    }
+    Ok(Some(found))
+}
+
+/// Every live page, newest first, up to [`MOST`].
+async fn pages(shell: &Shell, mneme: &Mneme) -> Result<Vec<Value>, MnemeError> {
     let local = shell.local();
     let mut pages = Vec::new();
     let mut offset = 0;
@@ -51,10 +109,7 @@ pub async fn index(shell: Shell, State(mneme): State<Mneme>) -> Response {
             limit: 500,
             filters: Filters::default(),
         };
-        let found = match mneme.pages(listing).await {
-            Ok(found) => found,
-            Err(error) => return failed(&error),
-        };
+        let found = mneme.pages(listing).await?;
         let done = found.pages.len() < 500;
         pages.extend(found.pages.into_iter().map(|page| {
             json!({
@@ -69,7 +124,7 @@ pub async fn index(shell: Shell, State(mneme): State<Mneme>) -> Response {
             break;
         }
     }
-    answer(StatusCode::OK, &Value::Array(pages))
+    Ok(pages)
 }
 
 #[derive(Debug, Deserialize)]

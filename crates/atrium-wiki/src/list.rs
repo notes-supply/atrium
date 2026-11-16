@@ -109,7 +109,9 @@ async fn list(
         limit: PAGE_SIZE,
         filters: Filters::default(),
     };
-    let (found, status) = tokio::try_join!(mneme.pages(listing), mneme.status())?;
+    let (found, status, files) = tokio::try_join!(mneme.pages(listing), mneme.status(), async {
+        Ok(crate::files::file_count(mneme).await)
+    })?;
     let local = shell.local();
     let pages = found.total.div_ceil(PAGE_SIZE).max(1);
     let first = listing.offset + 1;
@@ -127,6 +129,7 @@ async fn list(
                     (number(status.pages)) " pages and " (number(status.commits)) " commits on the record."
                     @if let Some(newest) = status.head_time { " The newest change was " (local.when_long(newest)) "." }
                 }
+                @if let Some(files) = files { (crate::files::switch(false, status.pages, files)) }
             }
             section.wiki-list.surface data-surface aria-labelledby="list-h" {
                 h2 #list-h .vh { "All pages" }

@@ -1,7 +1,7 @@
 //! The visit every request carries: the reader's clock in the configured zone, their settings
 //! from cookies, and when they were last here, from a cookie the server keeps itself.
 
-use atrium_core::{Entrance, Local, Prefs, Visit};
+use atrium_core::{Entrance, FileBytes, Local, Prefs, Visit};
 use axum::extract::{Request, State};
 use axum::http::header::{COOKIE, SET_COOKIE};
 use axum::http::{HeaderMap, HeaderValue};
@@ -136,7 +136,8 @@ pub async fn visit(State(visits): State<Visits>, mut request: Request, next: Nex
         entrance: entrance(sent, now.as_second()),
     });
     let mut response = next.run(request).await;
-    if page {
+    // A file's bytes are not a page of the visit, whatever their status.
+    if page && response.extensions().get::<FileBytes>().is_none() {
         let cookie = format!(
             "{COOKIE_NAME}={}; Path=/; Max-Age={KEEP}; HttpOnly; SameSite=Lax{}",
             kept.write(),

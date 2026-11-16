@@ -19,8 +19,10 @@ use futures_util::future::join_all;
 use maud::{Markup, html};
 use serde::Deserialize;
 
-use crate::mneme::{Event, EventKind, Filters, Listing, Mneme, MnemeError, PageId, Sort};
-use crate::{article, changes, data, diff, history, list, lost, machines, search};
+use crate::mneme::{
+    Event, EventKind, FileEvent, Filters, Listing, Mneme, MnemeError, PageId, Sort,
+};
+use crate::{article, changes, data, diff, files, history, list, lost, machines, search};
 
 /// Every route of the wiki.
 pub fn router(mneme: Mneme) -> Router {
@@ -30,6 +32,9 @@ pub fn router(mneme: Mneme) -> Router {
         .route("/wiki/page/{id}/history", get(history::show))
         .route("/wiki/page/{id}/at/{commit}", get(article::version))
         .route("/wiki/page/{id}/diff", get(diff::show))
+        .route("/wiki/files", get(files::list))
+        .route("/wiki/files/{*path}", get(files::show))
+        .route("/wiki/raw/{*path}", get(files::raw))
         .route("/wiki/changes", get(changes::show))
         .route("/wiki/search", get(search::show))
         .route("/wiki/machines", get(machines::show))
@@ -120,6 +125,14 @@ pub struct Params {
     pub from: Option<String>,
     pub to: Option<String>,
     pub only: Option<String>,
+    /// The folder a list of files shows.
+    pub under: Option<String>,
+    /// How many changes to pages, and to files, at the newest second before `before` a page
+    /// of changes already showed.
+    pub pages: Option<String>,
+    pub files: Option<String>,
+    /// The commit of a change a link to a file came from.
+    pub at: Option<String>,
 }
 
 pub fn params(query: Result<Query<Params>, QueryRejection>) -> Result<Params, Failure> {
@@ -348,6 +361,109 @@ pub fn change_row(
                 (delta(event.added, event.removed))
             }
         }
+    }
+}
+
+/// A change to a page or to a file, as lists of changes show both.
+#[derive(Debug, Clone, Copy)]
+pub enum Change<'a> {
+    Page(&'a Event),
+    File(&'a FileEvent),
+}
+
+impl Change<'_> {
+    #[must_use]
+    pub const fn time(&self) -> i64 {
+        match self {
+            Self::Page(event) => event.time,
+            Self::File(event) => event.time,
+        }
+    }
+
+    #[must_use]
+    pub fn author(&self) -> &str {
+        match self {
+            Self::Page(event) => &event.author,
+            Self::File(event) => &event.author,
+        }
+    }
+}
+
+/// Changes to pages and to files in one list, newest first; of two at the same time, the
+/// page's first.
+#[must_use]
+pub fn merged<'a>(pages: &'a [Event], files: &'a [FileEvent]) -> Vec<Change<'a>> {
+    let mut all: Vec<Change<'a>> = pages
+        .iter()
+        .map(Change::Page)
+        .chain(files.iter().map(Change::File))
+        .collect();
+    all.sort_by_key(|change| std::cmp::Reverse(change.time()));
+    all
+}
+
+/// One change to a file, as recent changes list it beside the pages': time, the file,
+/// marked as a file with its kind, what happened, who, and its size after.
+pub fn file_row(local: &Local, last: Option<i64>, event: &FileEvent, look: RowLook) -> Markup {
+    let new = last.is_some_and(|last| event.time > last);
+    let folder = crate::kind::folder(&event.path);
+    let place = if folder.is_empty() {
+        String::new()
+    } else {
+        format!(" in {folder}")
+    };
+    let kind = match event.kind {
+        EventKind::Created => format!("file added{place}"),
+        EventKind::Renamed => format!(
+            "file moved from {}",
+            event.from.as_deref().unwrap_or_default()
+        ),
+        EventKind::Deleted => format!("file deleted, was {}", event.path),
+        EventKind::Edited | EventKind::Other => format!("file{place}, a new version"),
+    };
+    let when = if look.day {
+        local.when(event.time)
+    } else {
+        local.hm(event.time)
+    };
+    let name = crate::kind::name(&event.path);
+    html! {
+        li data-new[new] data-file {
+            (local.time(event.time, &when))
+            span {
+                @if event.kind == EventKind::Deleted {
+                    span.ttl.ttl-gone { (name) }
+                } @else {
+                    a.ttl href=(href(&crate::kind::page_href(&event.path), &[("at", event.commit.as_str())])) data-row data-carry { (name) }
+                }
+                " " span.file-mark { (crate::kind::label(&event.path)) }
+                span.kind { (kind) }
+                @if new { span.vh { ", new since your last visit" } }
+            }
+            span.who { (event.author) }
+            @if event.kind == EventKind::Deleted {
+                span.fsize {}
+            } @else {
+                span.fsize { (atrium_ui::words::bytes(event.size)) }
+            }
+        }
+    }
+}
+
+/// A row of either kind of change.
+pub fn any_row(
+    local: &Local,
+    last: Option<i64>,
+    change: Change<'_>,
+    titles: &HashMap<PageId, String>,
+    losers: &HashMap<String, Loser>,
+    look: RowLook,
+) -> Markup {
+    match change {
+        Change::Page(event) => {
+            change_row(local, last, event, title_of(titles, event), losers, look)
+        }
+        Change::File(event) => file_row(local, last, event, look),
     }
 }
 

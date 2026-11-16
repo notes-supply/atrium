@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::extract::{Path, Query, Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -28,6 +28,214 @@ pub enum Stub {
     Down,
     /// Answers every route with 500.
     Failing,
+    /// Answers as a Mneme from before files did: every route of the examples but the
+    /// files', which answer 404 as an unknown route.
+    Older,
+    /// Answers with files that moved: [`MOVES`] in order, where a file left `loop.zip` and
+    /// came back before it was deleted, and `kit.zip` moved to `old/kit.zip` before a new
+    /// file took its path.
+    Moves,
+    /// As [`Stub::Moves`], with [`BURIED`] newer changes to other files after them, more
+    /// than Atrium reads back through.
+    MovesBuried,
+    /// Answers as [`Stub::Fixtures`], but every call for the files' changes fails.
+    FileChangesFailing,
+    /// Answers with a morning busier than one read of changes, [`BUSY_PAGES`] changes to
+    /// pages and [`BUSY_FILES`] to files, several to the second and [`BUSY_BURST`] files in
+    /// one second, more than two reads hold, and a few of each the day before.
+    Busy,
+}
+
+/// Changes to pages in [`Stub::Busy`]'s busy morning, three to the second.
+pub const BUSY_PAGES: usize = 600;
+/// Changes to files in [`Stub::Busy`]'s busy morning: the newest [`BUSY_BURST`] in its
+/// newest second, as one commit of a whole folder makes, then two to the second.
+pub const BUSY_FILES: usize = 1200;
+/// Changes to files in the busy morning's newest second.
+pub const BUSY_BURST: usize = 1100;
+/// Changes of each kind the day before.
+pub const BUSY_EARLIER: usize = 5;
+/// The newest change of the busy morning: 11 November 2026 at 09:30 in Stockholm.
+const BUSY_NEWEST: i64 = 1_794_385_800;
+
+/// The time of each busy change, newest first: the morning's, the first `burst` of them in
+/// one second and the rest `per_second` to a second, then the day before's.
+fn busy_times(
+    morning: usize,
+    burst: usize,
+    per_second: usize,
+) -> impl Iterator<Item = (usize, i64)> {
+    let per_second = i64::try_from(per_second).unwrap_or(1);
+    let at = |i: usize| i64::try_from(i).unwrap_or(0);
+    (0..morning)
+        .map(move |i| (i, BUSY_NEWEST - at(i.saturating_sub(burst)) / per_second))
+        .chain((0..BUSY_EARLIER).map(move |i| (morning + i, BUSY_NEWEST - 86_400 - at(i) * 60)))
+}
+
+/// Which part of a busy listing to answer, as Mneme reads it.
+#[derive(Deserialize)]
+struct Window {
+    #[serde(default)]
+    offset: usize,
+    #[serde(default = "fifty")]
+    limit: usize,
+    since: Option<i64>,
+    before: Option<i64>,
+}
+
+/// The events at the times `times` gives, as `event` writes each, in the window asked for.
+fn busy(
+    window: &Window,
+    times: impl Iterator<Item = (usize, i64)>,
+    event: impl Fn(usize, i64) -> Value,
+) -> Response {
+    let kept: Vec<Value> = times
+        .filter(|(_, time)| window.since.is_none_or(|since| *time >= since))
+        .filter(|(_, time)| window.before.is_none_or(|before| *time < before))
+        .map(|(i, time)| event(i, time))
+        .collect();
+    let total = kept.len();
+    let events: Vec<Value> = kept
+        .into_iter()
+        .skip(window.offset)
+        .take(window.limit.min(500))
+        .collect();
+    json(serde_json::json!({ "total": total, "events": events }).to_string())
+}
+
+async fn busy_changes(Query(window): Query<Window>) -> Response {
+    busy(&window, busy_times(BUSY_PAGES, 0, 3), |i, time| {
+        serde_json::json!({
+            "commit": format!("{i:040x}"),
+            "page": format!("{i:016x}"),
+            "path": format!("busy/page-{i:04}.md"),
+            "time": time,
+            "author": "Writer",
+            "kind": "edited",
+            "version": true,
+            "words": 10,
+            "added": 1,
+            "removed": 0,
+        })
+    })
+}
+
+async fn busy_file_changes(Query(window): Query<Window>) -> Response {
+    busy(&window, busy_times(BUSY_FILES, BUSY_BURST, 2), |i, time| {
+        serde_json::json!({
+            "commit": format!("{:040x}", i + 10_000),
+            "path": format!("busy/file-{i:04}.bin"),
+            "time": time,
+            "author": "Writer",
+            "kind": "edited",
+            "size": 10,
+        })
+    })
+}
+
+/// [`Stub::Moves`]'s file events, oldest first: time, kind, path, the path it moved from.
+pub const MOVES: [(i64, &str, &str, Option<&str>); 7] = [
+    (1_794_300_001, "created", "loop.zip", None),
+    (1_794_300_002, "renamed", "back.zip", Some("loop.zip")),
+    (1_794_300_003, "renamed", "loop.zip", Some("back.zip")),
+    (1_794_300_004, "deleted", "loop.zip", None),
+    (1_794_300_005, "created", "kit.zip", None),
+    (1_794_300_006, "renamed", "old/kit.zip", Some("kit.zip")),
+    (1_794_300_007, "created", "kit.zip", None),
+];
+
+/// Changes to other files after [`MOVES`] in [`Stub::MovesBuried`].
+pub const BURIED: usize = 2100;
+
+/// The commit of [`MOVES`]'s event at `time`.
+#[must_use]
+pub fn moves_commit(time: i64) -> String {
+    format!("{time:040x}")
+}
+
+fn moves_event(time: i64, kind: &str, path: &str, from: Option<&str>) -> Value {
+    serde_json::json!({
+        "commit": moves_commit(time), "path": path, "time": time, "author": "Writer",
+        "kind": kind, "from": from, "size": if kind == "deleted" { 0 } else { 4 },
+    })
+}
+
+/// [`MOVES`], newest first, after `BURIED_UNDER` newer changes to other files.
+async fn moves_changes<const BURIED_UNDER: usize>(Query(window): Query<Window>) -> Response {
+    let newest = MOVES[MOVES.len() - 1].0;
+    let times = (0..BURIED_UNDER)
+        .map(move |i| newest + 1 + i64::try_from(BURIED_UNDER - i).unwrap_or(0))
+        .chain(MOVES.iter().rev().map(|(time, ..)| *time))
+        .enumerate();
+    busy(&window, times, |i, time| {
+        if i < BURIED_UNDER {
+            return moves_event(time, "edited", &format!("other/file-{i:04}.bin"), None);
+        }
+        let (time, kind, path, from) = MOVES[MOVES.len() - 1 - (i - BURIED_UNDER)];
+        moves_event(time, kind, path, from)
+    })
+}
+
+/// The file at a path now, or the one deleted there last, as Mneme answers: its newest
+/// event, which is all these tests read.
+async fn moves_file(Path(asked): Path<String>) -> Response {
+    let newest = MOVES
+        .iter()
+        .rev()
+        .find(|(_, _, path, from)| *path == asked || *from == Some(asked.as_str()));
+    let Some((time, kind, path, _)) = newest.filter(|(_, _, path, _)| *path == asked) else {
+        let body = r#"{"error":"no file is at this path, and none was deleted there"}"#;
+        return (StatusCode::NOT_FOUND, json(body.to_owned())).into_response();
+    };
+    let deleted = (*kind == "deleted").then_some(*time);
+    let file = serde_json::json!({
+        "path": path, "size": 4, "type": "application/octet-stream", "created": time,
+        "updated": time, "versions": 1, "author": "Writer", "commit": moves_commit(*time),
+        "deleted": deleted,
+    });
+    let events = [moves_event(*time, kind, path, None)];
+    json(serde_json::json!({ "file": file, "total": 1, "events": events }).to_string())
+}
+
+async fn moves_raw(method: Method, headers: HeaderMap, Path(path): Path<String>) -> Response {
+    if ["kit.zip", "old/kit.zip"].contains(&path.as_str()) {
+        let bytes = axum::body::Bytes::from(path.clone().into_bytes());
+        return crate::raw::answer(&method, &headers, &path, bytes, false);
+    }
+    crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path")
+}
+
+fn moves_routes<const BURIED_UNDER: usize>() -> Router {
+    Router::new()
+        .route(
+            "/v1/changes",
+            get(|| async { json(r#"{"total":0,"events":[]}"#.to_owned()) }),
+        )
+        .route(
+            "/v1/pages",
+            get(|| async { json(r#"{"total":0,"pages":[]}"#.to_owned()) }),
+        )
+        .route(
+            "/v1/status",
+            get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
+        )
+        .route("/v1/changes/files", get(moves_changes::<BURIED_UNDER>))
+        .route("/v1/files/{*path}", get(moves_file))
+        .route("/v1/raw/{*path}", get(moves_raw))
+}
+
+fn busy_routes() -> Router {
+    Router::new()
+        .route("/v1/changes", get(busy_changes))
+        .route("/v1/changes/files", get(busy_file_changes))
+        .route(
+            "/v1/pages",
+            get(|| async { json(r#"{"total":0,"pages":[]}"#.to_owned()) }),
+        )
+        .route(
+            "/v1/status",
+            get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
+        )
 }
 
 /// A running stand-in.
@@ -165,11 +373,133 @@ async fn path(Path(asked): Path<String>) -> Response {
         })
 }
 
+async fn files(Query(paging): Query<Paging>) -> Response {
+    paged(include_str!("../fixtures/files.json"), "files", &paging)
+}
+
+async fn file(Path(asked): Path<String>) -> Response {
+    if asked == "brand/archive/Kit 2026.zip" {
+        return json(include_str!("../fixtures/file.json").to_owned());
+    }
+    if asked == UNREADABLE {
+        let commit = "a75f4a67d9148128bb1b4cc2f494d997cef810e7";
+        let file = serde_json::json!({
+            "path": UNREADABLE, "size": 26, "type": "text/plain; charset=utf-8",
+            "created": 1_788_221_400, "updated": 1_788_221_400, "versions": 1,
+            "author": "Writer", "commit": commit, "deleted": null,
+        });
+        let event = serde_json::json!({
+            "commit": commit, "path": UNREADABLE, "time": 1_788_221_400,
+            "author": "Writer", "kind": "created", "size": 26,
+        });
+        return json(
+            serde_json::json!({ "file": file, "total": 1, "events": [event] }).to_string(),
+        );
+    }
+    let body = r#"{"error":"no file is at this path, and none was deleted there"}"#.to_owned();
+    (StatusCode::NOT_FOUND, json(body)).into_response()
+}
+
+async fn file_changes(Query(paging): Query<Paging>) -> Response {
+    paged(
+        include_str!("../fixtures/file-changes.json"),
+        "events",
+        &paging,
+    )
+}
+
+/// A text file whose page Mneme answers but whose bytes it cannot send.
+const UNREADABLE: &str = "notes/unreadable.txt";
+
+/// Some bytes for each file of the examples, as long as its listing says, and for the
+/// tests: `slow.bin` comes in pieces 400 ms apart, `busy.bin` and [`UNREADABLE`] are files
+/// the server cannot send, and `bare.svg` comes without a policy.
+async fn raw(
+    method: Method,
+    headers: HeaderMap,
+    Path(path): Path<String>,
+    Query(at): Query<At>,
+) -> Response {
+    match path.as_str() {
+        "slow.bin" => {
+            let pieces = futures_util::stream::unfold(0_u8, |sent| async move {
+                if sent == 5 {
+                    return None;
+                }
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                Some((Ok::<_, std::io::Error>(vec![b'a' + sent; 1024]), sent + 1))
+            });
+            return (
+                [
+                    (header::CONTENT_TYPE, "application/octet-stream"),
+                    (header::CONTENT_LENGTH, "5120"),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        "attachment; filename=\"slow.bin\"",
+                    ),
+                    (
+                        header::CONTENT_SECURITY_POLICY,
+                        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                    ),
+                ],
+                axum::body::Body::from_stream(pieces),
+            )
+                .into_response();
+        }
+        "busy.bin" | UNREADABLE => {
+            return crate::raw::error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the file is stored as a delta",
+            );
+        }
+        _ => {}
+    }
+    let files: Value =
+        serde_json::from_str(include_str!("../fixtures/files.json")).unwrap_or_default();
+    let size = files["files"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|file| file["path"] == path.as_str())
+        .and_then(|file| file["size"].as_u64());
+    let Some(size) = size.or_else(|| (path == "bare.svg").then_some(40)) else {
+        return crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path");
+    };
+    let bytes: Vec<u8> = (0..size)
+        .map(|i| b"0123456789abcdef"[(i % 16) as usize])
+        .collect();
+    let mut answer = crate::raw::answer(
+        &method,
+        &headers,
+        &path,
+        axum::body::Bytes::from(bytes),
+        at.at.is_some(),
+    );
+    if path == "bare.svg" {
+        answer.headers_mut().remove(header::CONTENT_SECURITY_POLICY);
+    }
+    answer
+}
+
+#[derive(Deserialize)]
+struct At {
+    at: Option<String>,
+}
+
 fn of_alpha(id: &str, answer: impl FnOnce() -> Response) -> Response {
     if id == ALPHA { answer() } else { missing() }
 }
 
 fn routes() -> Router {
+    older()
+        .route("/v1/files", get(files))
+        .route("/v1/files/{*path}", get(file))
+        .route("/v1/changes/files", get(file_changes))
+        .route("/v1/raw/{*path}", get(raw))
+}
+
+/// Every route but the files'.
+fn older() -> Router {
     Router::new()
         .route("/v1/pages", get(pages))
         .route("/v1/pages/{id}", get(page))
@@ -231,6 +561,21 @@ pub async fn serve(stub: Stub) -> Running {
             }))
         }
         Stub::Failing => Router::new().fallback(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+        Stub::Busy => busy_routes(),
+        Stub::Moves => moves_routes::<0>(),
+        Stub::MovesBuried => moves_routes::<BURIED>(),
+        Stub::FileChangesFailing => older()
+            .route("/v1/files", get(files))
+            .route("/v1/files/{*path}", get(file))
+            .route("/v1/raw/{*path}", get(raw))
+            .route(
+                "/v1/changes/files",
+                get(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+            ),
+        Stub::Older => older().fallback(|| async {
+            let body = r#"{"error":"no such route"}"#.to_owned();
+            (StatusCode::NOT_FOUND, json(body)).into_response()
+        }),
         Stub::Down => {
             drop(listener);
             return Running { base, requests };
