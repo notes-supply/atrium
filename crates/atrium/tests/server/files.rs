@@ -513,3 +513,13 @@ async fn a_mneme_without_files_leaves_the_wiki_as_it_was() {
     assert_eq!(texts(&home.body, ".tile.changes ol li").len(), 8);
     assert!(!home.body.contains("briefly away"), "{}", home.body);
 }
+
+#[tokio::test]
+async fn the_demos_search_finds_the_brand_kit() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "member"]).await;
+    let reply = atrium.get("/wiki/search?q=bread%20stall").await;
+    assert_eq!(
+        texts(&reply.body, ".result-list h3"),
+        ["Saturday Loaves brand kit"]
+    );
+}

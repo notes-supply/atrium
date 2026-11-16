@@ -847,6 +847,7 @@ async fn search(Query(params): Query<Params>) -> Response {
     let words = params.q.clone().unwrap_or_default().to_lowercase();
     let hits: Vec<Value> = PAGES
         .iter()
+        .chain([&BRAND])
         .filter(|page| {
             !words.is_empty()
                 && format!("{} {}", page.title, page.text)
