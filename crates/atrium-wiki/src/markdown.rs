@@ -4,7 +4,7 @@
 //! lead to Atrium's route for a file's bytes, when Mneme serves files; an image on another
 //! site, which the page's policy would block, becomes a link to it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
 
 use atrium_ui::components::{Mark, Want, mark};
@@ -277,6 +277,7 @@ pub fn files_linked(markdown: &str, path: &str) -> Vec<String> {
     let arena = Arena::new();
     let root = comrak::parse_document(&arena, markdown, &options());
     let mut found: Vec<String> = Vec::new();
+    let mut seen: HashSet<String> = HashSet::new();
     for node in root.descendants() {
         let file = match &node.data().value {
             NodeValue::Link(link) => match target(&link.url, folder) {
@@ -290,7 +291,7 @@ pub fn files_linked(markdown: &str, path: &str) -> Vec<String> {
             _ => None,
         };
         if let Some(file) = file
-            && !found.contains(&file)
+            && seen.insert(file.clone())
         {
             found.push(file);
         }
