@@ -1002,6 +1002,37 @@ async fn file_page(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::stub::{self, Stub};
+
+    async fn page_files(stub: Stub, text: &str) -> PageFiles {
+        let base = stub::serve(stub).await.base;
+        let mneme = Mneme::new(&base, Duration::from_millis(500)).unwrap();
+        PageFiles::of(&mneme, text, "brand/guide.md").await
+    }
+
+    #[tokio::test]
+    async fn a_mneme_without_files_leaves_a_pages_links_as_written() {
+        let text = "![l](logo.svg) [k](archive/Kit%202026.zip)";
+        let older = page_files(Stub::Older, text).await;
+        assert!(matches!(older.links(None), FileLinks::AsWritten));
+        let newer = page_files(Stub::Fixtures, text).await;
+        let FileLinks::Served {
+            known: Some(known), ..
+        } = newer.links(None)
+        else {
+            panic!("served with what the listing knows");
+        };
+        assert!(known.complete);
+        assert_eq!(
+            known.files.get("brand/archive/Kit 2026.zip"),
+            Some(&KnownFile { size: 3000 })
+        );
+        let plain = page_files(Stub::Older, "No files here.").await;
+        assert!(matches!(
+            plain.links(None),
+            FileLinks::Served { known: None, .. }
+        ));
+    }
 
     #[test]
     fn the_common_folder_is_shared_by_every_path() {
