@@ -35,6 +35,9 @@ pub enum Stub {
     /// came back before it was deleted, and `kit.zip` moved to `old/kit.zip` before a new
     /// file took its path.
     Moves,
+    /// As [`Stub::Moves`], with [`BURIED`] newer changes to other files after them, more
+    /// than Atrium reads back through.
+    MovesBuried,
     /// Answers as [`Stub::Fixtures`], but every call for the files' changes fails.
     FileChangesFailing,
     /// Answers with a morning busier than one read of changes, [`BUSY_PAGES`] changes to
@@ -141,6 +144,9 @@ pub const MOVES: [(i64, &str, &str, Option<&str>); 7] = [
     (1_794_300_007, "created", "kit.zip", None),
 ];
 
+/// Changes to other files after [`MOVES`] in [`Stub::MovesBuried`].
+pub const BURIED: usize = 2100;
+
 /// The commit of [`MOVES`]'s event at `time`.
 #[must_use]
 pub fn moves_commit(time: i64) -> String {
@@ -154,14 +160,18 @@ fn moves_event(time: i64, kind: &str, path: &str, from: Option<&str>) -> Value {
     })
 }
 
-async fn moves_changes(Query(window): Query<Window>) -> Response {
-    let times = MOVES
-        .iter()
-        .rev()
-        .enumerate()
-        .map(|(i, (time, ..))| (i, *time));
-    busy(&window, times, |i, _| {
-        let (time, kind, path, from) = MOVES[MOVES.len() - 1 - i];
+/// [`MOVES`], newest first, after `BURIED_UNDER` newer changes to other files.
+async fn moves_changes<const BURIED_UNDER: usize>(Query(window): Query<Window>) -> Response {
+    let newest = MOVES[MOVES.len() - 1].0;
+    let times = (0..BURIED_UNDER)
+        .map(move |i| newest + 1 + i64::try_from(BURIED_UNDER - i).unwrap_or(0))
+        .chain(MOVES.iter().rev().map(|(time, ..)| *time))
+        .enumerate();
+    busy(&window, times, |i, time| {
+        if i < BURIED_UNDER {
+            return moves_event(time, "edited", &format!("other/file-{i:04}.bin"), None);
+        }
+        let (time, kind, path, from) = MOVES[MOVES.len() - 1 - (i - BURIED_UNDER)];
         moves_event(time, kind, path, from)
     })
 }
@@ -195,7 +205,7 @@ async fn moves_raw(method: Method, headers: HeaderMap, Path(path): Path<String>)
     crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path")
 }
 
-fn moves_routes() -> Router {
+fn moves_routes<const BURIED_UNDER: usize>() -> Router {
     Router::new()
         .route(
             "/v1/changes",
@@ -209,7 +219,7 @@ fn moves_routes() -> Router {
             "/v1/status",
             get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
         )
-        .route("/v1/changes/files", get(moves_changes))
+        .route("/v1/changes/files", get(moves_changes::<BURIED_UNDER>))
         .route("/v1/files/{*path}", get(moves_file))
         .route("/v1/raw/{*path}", get(moves_raw))
 }
@@ -552,7 +562,8 @@ pub async fn serve(stub: Stub) -> Running {
         }
         Stub::Failing => Router::new().fallback(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
         Stub::Busy => busy_routes(),
-        Stub::Moves => moves_routes(),
+        Stub::Moves => moves_routes::<0>(),
+        Stub::MovesBuried => moves_routes::<BURIED>(),
         Stub::FileChangesFailing => older()
             .route("/v1/files", get(files))
             .route("/v1/files/{*path}", get(file))

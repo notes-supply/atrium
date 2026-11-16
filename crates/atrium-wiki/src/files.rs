@@ -194,25 +194,90 @@ async fn moved_to(mneme: &Mneme, path: &str) -> Result<Option<String>, MnemeErro
 /// for a link from that change, which names the file then rather than whichever file has
 /// the path now.
 enum Then {
-    /// The file the change was to is this path's file now, or Atrium cannot tell.
+    /// The file the change was to is this path's file now.
     Here,
     /// It is at this path now.
     Moved(String),
     /// It was deleted, by this event.
     Deleted(FileEvent),
+    /// The change is older than the events Atrium reads, and is not in the history of the
+    /// file at the path now, so Atrium cannot tell where its file is. It never guesses the
+    /// file at the path now, which may be another.
+    Unknown,
 }
 
 async fn then(mneme: &Mneme, path: &str, commit: &CommitId) -> Result<Then, MnemeError> {
-    let Some((events, index)) =
-        read_back_to(mneme, |event| event.commit == *commit && event.path == path).await?
-    else {
-        return Ok(Then::Here);
+    let is_it = |event: &FileEvent| event.commit == *commit && event.path == path;
+    let Some((events, index)) = read_back_to(mneme, is_it).await? else {
+        return Ok(if in_history(mneme, path, &is_it).await? {
+            Then::Here
+        } else {
+            Then::Unknown
+        });
     };
     Ok(match trail(&events, index) {
         Trail::Here(now) if now == path => Then::Here,
         Trail::Here(now) => Then::Moved(now),
         Trail::Deleted(_, by) => Then::Deleted(events[by].clone()),
     })
+}
+
+/// Whether the file at `path` now, or the one deleted there last, has an event that `is_it`
+/// picks among its own newest [`MOVES_READ`], which Mneme follows back across its moves.
+async fn in_history(
+    mneme: &Mneme,
+    path: &str,
+    is_it: &impl Fn(&FileEvent) -> bool,
+) -> Result<bool, MnemeError> {
+    let mut offset = 0;
+    while offset < MOVES_READ {
+        let detail = match mneme.file(path, offset, STEP).await {
+            Ok(detail) => detail,
+            Err(MnemeError::NotFound) => return Ok(false),
+            Err(error) => return Err(error),
+        };
+        if detail.events.iter().any(is_it) {
+            return Ok(true);
+        }
+        offset += u64::try_from(detail.events.len()).unwrap_or(STEP);
+        if detail.events.is_empty() || offset >= detail.total {
+            break;
+        }
+    }
+    Ok(false)
+}
+
+/// The page for a change too old to follow to its file: what Atrium can say, the bytes the
+/// change left, pinned to its commit, and the way to every file.
+fn too_old(shell: &Shell, path: &str, commit: &CommitId) -> Response {
+    let name = kind::name(path);
+    let body = html! {
+        main #(MAIN) .not-found {
+            section.lost aria-labelledby="lost-h" {
+                p.code-404 { (path) " at " (commit.short()) }
+                h1 #lost-h { "Too old to follow" }
+                p {
+                    "This change to " (name) " is older than the newest " (number(MOVES_READ))
+                    " changes to files, so Atrium cannot tell where its file is now. The file at "
+                    code { (path) } " now is another one, or none."
+                }
+                div.gone.surface data-surface {
+                    p.diff-sum { "the file as this change left it" }
+                    p { a.btn href=(kind::raw_href(path, Some(commit.as_str()))) download=(name) { "Download " (name) } }
+                }
+            }
+            aside.lost-side.surface data-surface aria-labelledby="ways-h" {
+                h2 #ways-h .rail-h { "Ways on" }
+                a.more href="/wiki/files" { "All files" }
+                a.more href="/wiki/changes" { "Recent changes" }
+            }
+        }
+    };
+    shell.page(Page::new(
+        format!("{name}, too old to follow, Atrium wiki"),
+        "A change to a file too old to follow to where the file is now.",
+        body,
+    ))
 }
 
 /// Mneme's answer for a file as the browser's: its status, the headers in [`PASSED`], and
@@ -946,6 +1011,7 @@ pub async fn show(
             Ok(Then::Deleted(deletion)) => {
                 return deleted_then(&shell, &mneme, &path, &deletion).await;
             }
+            Ok(Then::Unknown) => return too_old(&shell, &path, &commit),
             Err(error) => return respond(&shell, &mneme, Err(error.into())),
         },
         None => {}

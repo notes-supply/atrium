@@ -599,3 +599,42 @@ async fn an_old_change_leads_to_its_file_not_the_new_one_at_its_path() {
     assert_eq!(atrium.get("/wiki/raw/kit.zip").await.body, "kit.zip");
     assert_eq!(atrium.get("/wiki/files/kit.zip?at=main").await.status, 400);
 }
+
+#[tokio::test]
+async fn a_change_too_old_to_follow_never_leads_to_the_file_at_its_path_now() {
+    // kit.zip moved to old/kit.zip, a new file took kit.zip, and then other files changed
+    // more often than Atrium reads back through.
+    let atrium = Atrium::start(Stub::MovesBuried, &["--viewer", "member"]).await;
+    let first = format!("/wiki/files/kit.zip?at={}", moves_at(1_794_300_005));
+    let old = atrium.get(&first).await;
+    assert_eq!(old.status, 200, "{:?}", old.header("location"));
+    check(&first, &old.body);
+    assert_eq!(texts(&old.body, "h1"), ["Too old to follow"]);
+    assert_eq!(
+        attrs(&old.body, ".gone a.btn", "href"),
+        [format!("/wiki/raw/kit.zip?at={}", moves_at(1_794_300_005))]
+    );
+    assert_eq!(attrs(&old.body, ".lost-side a", "href")[0], "/wiki/files");
+    // The file at a path now whose own history holds the change is that file.
+    let newest = atrium
+        .get(&format!(
+            "/wiki/files/kit.zip?at={}",
+            moves_at(1_794_300_007)
+        ))
+        .await;
+    assert_eq!(newest.status, 200);
+    assert_eq!(texts(&newest.body, "h1"), ["kit.zip"]);
+    let moved = atrium
+        .get(&format!(
+            "/wiki/files/old/kit.zip?at={}",
+            moves_at(1_794_300_006)
+        ))
+        .await;
+    assert_eq!(moved.status, 200);
+    assert_eq!(texts(&moved.body, "h1"), ["kit.zip"]);
+    assert_eq!(
+        texts(&moved.body, ".crumbs a"),
+        ["Files", "old"],
+        "the moved file, at old/kit.zip"
+    );
+}
