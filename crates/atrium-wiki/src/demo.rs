@@ -1348,6 +1348,7 @@ mod tests {
     fn the_parity_check_addresses_the_demos_pages() {
         let routes = include_str!("../../../tools/check/routes.mjs");
         assert!(routes.contains(&format!("'/wiki/page/{}'", address("restic"))));
+        assert!(routes.contains(&format!("'/wiki/page/{}'", address("brand"))));
         for version in [20, 22, 23] {
             assert!(
                 routes.contains(&format!("'{}'", commit_of("restic", version))),

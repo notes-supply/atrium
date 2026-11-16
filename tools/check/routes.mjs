@@ -6,6 +6,8 @@ const RESTIC = '/wiki/page/06746ebaa613d598';
 const V20 = 'ba0d8d9add8250f0c8cf49841c43ad453cf0f1a7';
 const V22 = 'ba0d8f9add825456c8cf47841c43a9df3cf0efa7';
 const V23 = 'ba0d909add825609c8cf46841c43a82c3cf0f0a7';
+// The page that shows the brand's logo and links its kit.
+const BRAND = '/wiki/page/3f7669979d3b2fbf';
 
 export const ROUTES = [
   { name: 'index', file: 'index.html', path: '/' },
@@ -17,6 +19,10 @@ export const ROUTES = [
   { name: 'changes', file: 'changes.html', path: '/wiki/changes' },
   { name: 'search', file: 'search.html', path: '/wiki/search?q=restic' },
   { name: 'machines', file: 'machines.html', path: '/wiki/machines' },
+  { name: 'files', path: '/wiki/files' },
+  { name: 'folder', path: '/wiki/files?under=brand' },
+  { name: 'file', path: '/wiki/files/brand/logo.svg' },
+  { name: 'brand', path: BRAND },
   { name: 'settings', path: '/settings' },
   { name: 'away', file: 'away.html', path: '/', away: true },
   { name: '404', file: '404.html', path: '/wiki/homelab/printer.md' },
