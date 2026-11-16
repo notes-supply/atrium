@@ -290,6 +290,43 @@ const GONE: PageData = PageData {
     text: "",
 };
 
+/// The page that shows the brand's logo and links its kit, among the files it describes. It
+/// was last changed before the oldest of the sixteen, so the list and recent changes show
+/// them as the prototype does.
+const BRAND: PageData = PageData {
+    key: "brand",
+    title: "Saturday Loaves brand kit",
+    path: "brand/brand-kit.md",
+    words: 164,
+    created: "2026-10-02T14:15",
+    updated: "2026-10-02T14:15",
+    versions: 1,
+    churn: 164,
+    text: "Everything the weekend bread stall's board, bags and stickers need lives in this folder: the loaf, the palette and the guidelines.",
+};
+
+const BRAND_TEXT: &str = r"# Saturday Loaves brand kit
+
+![The Saturday Loaves logo: a loaf with three scores, on a board](logo.svg)
+
+Everything the weekend bread stall's board, bags and stickers need lives in this folder: the loaf, the palette and the guidelines. Take the logo from here, never from an old slide. The first export of it still carried its editor's script.
+
+## Files
+
+- [The whole kit](kit.zip), with the logo, the square mark and the palette in one archive.
+- [The guidelines](print/guidelines.pdf): clear space, the smallest size, and which colour goes on which.
+- [The palette](palette.txt) as hex values.
+- The [square mark](mark.png) for the card reader and the sticker sheet.
+
+## Colours
+
+| Name | Hex | Use |
+| --- | --- | --- |
+| crust | `#b5652b` | the mark, buttons |
+| crumb | `#f3e3c3` | lines on crust |
+| char | `#6b3a17` | text on flour |
+";
+
 /// The pages the record counts, of which the demo holds the sixteen above.
 const PAGE_COUNT: u64 = 64;
 const COMMIT_COUNT: u64 = 3118;
@@ -414,6 +451,7 @@ fn changes() -> Vec<Change> {
             22,
             6,
         ),
+        change("2026-10-02T14:15", "brand", "created", "rowan", 1, 164, 0),
     ]
 }
 
@@ -462,10 +500,14 @@ fn lost_edits() -> Vec<Change> {
 }
 
 fn page_of(key: &str) -> Option<&'static PageData> {
+    all_pages().find(|page| page.key == key)
+}
+
+/// Every page the demo has a text for, the deleted one too.
+fn all_pages() -> impl Iterator<Item = &'static PageData> {
     PAGES
         .iter()
-        .chain(std::iter::once(&GONE))
-        .find(|page| page.key == key)
+        .chain([&BRAND, &GONE])
 }
 
 fn page_id(key: &str) -> String {
@@ -611,6 +653,7 @@ fn markdown(page: &PageData) -> String {
             "# {}\n\n{}\n\n## Open questions\n\n- Keep the 200 ms tapping term on the pinkies, or try 180?\n",
             page.title, page.text
         ),
+        "brand" => BRAND_TEXT.to_owned(),
         _ => format!("# {}\n\n{}\n", page.title, page.text),
     }
 }
@@ -660,7 +703,7 @@ fn sorted(params: &Params, mut pages: Vec<&'static PageData>) -> Vec<&'static Pa
 }
 
 async fn pages(Query(params): Query<Params>) -> Response {
-    let mut all: Vec<&PageData> = PAGES.iter().collect();
+    let mut all: Vec<&PageData> = PAGES.iter().chain([&BRAND]).collect();
     if params.deleted == Some(true) {
         all.push(&GONE);
     }
@@ -670,10 +713,7 @@ async fn pages(Query(params): Query<Params>) -> Response {
 }
 
 fn by_id(id: &str) -> Option<&'static PageData> {
-    PAGES
-        .iter()
-        .chain(std::iter::once(&GONE))
-        .find(|page| page_id(page.key) == id)
+    all_pages().find(|page| page_id(page.key) == id)
 }
 
 fn missing() -> Response {
@@ -925,6 +965,278 @@ pub fn routes() -> Router {
         .route("/v1/machines", get(machines))
         .route("/v1/questions", get(questions))
         .route("/v1/paths/{*path}", get(path))
+        .route("/v1/files", get(files))
+        .route("/v1/files/{*path}", get(file))
+        .route("/v1/changes/files", get(file_changes))
+        .route("/v1/raw/{*path}", get(raw))
+}
+
+/// One change to a file: when, which, what and by whom, and the bytes it left there. The
+/// demo's files are tiny and in `crates/atrium-wiki/demo`; `logo-v1.svg` is the logo as
+/// first exported, with its editor's script still in it, which no browser may run.
+struct FileChange {
+    at: &'static str,
+    path: &'static str,
+    kind: &'static str,
+    author: &'static str,
+    from: Option<&'static str>,
+    bytes: &'static [u8],
+}
+
+const fn file_change(
+    at: &'static str,
+    path: &'static str,
+    kind: &'static str,
+    author: &'static str,
+    bytes: &'static [u8],
+) -> FileChange {
+    FileChange {
+        at,
+        path,
+        kind,
+        author,
+        from: None,
+        bytes,
+    }
+}
+
+const LOGO_V1: &[u8] = include_bytes!("../demo/logo-v1.svg");
+const LOGO: &[u8] = include_bytes!("../demo/logo.svg");
+const MARK: &[u8] = include_bytes!("../demo/mark.png");
+const OLD_MARK: &[u8] = include_bytes!("../demo/old-mark.png");
+const KIT_V1: &[u8] = include_bytes!("../demo/kit-v1.zip");
+const KIT: &[u8] = include_bytes!("../demo/kit.zip");
+const GUIDELINES: &[u8] = include_bytes!("../demo/guidelines.pdf");
+const PALETTE: &[u8] = include_bytes!("../demo/palette.txt");
+const RACK: &[u8] = include_bytes!("../demo/rack.svg");
+
+/// Every change to the demo's files, oldest first: versions, a move and a deletion.
+fn file_changes_oldest_first() -> Vec<FileChange> {
+    vec![
+        file_change("2026-06-20T09:00", "brand/old-mark.png", "created", "rowan", OLD_MARK),
+        file_change("2026-09-20T21:40", "homelab/laurel-rack.svg", "created", "ironbark", RACK),
+        file_change("2026-10-02T14:10", "brand/logo.svg", "created", "rowan", LOGO_V1),
+        file_change("2026-10-02T14:10", "brand/mark.png", "created", "rowan", MARK),
+        file_change("2026-10-02T14:12", "brand/kit.zip", "created", "rowan", KIT_V1),
+        file_change("2026-10-02T14:12", "brand/palette.txt", "created", "rowan", PALETTE),
+        file_change("2026-10-05T11:00", "brand/guidelines-draft.pdf", "created", "rowan", GUIDELINES),
+        file_change("2026-11-08T11:05", "brand/old-mark.png", "deleted", "rowan", &[]),
+        FileChange {
+            from: Some("brand/guidelines-draft.pdf"),
+            ..file_change("2026-11-09T10:15", "brand/print/guidelines.pdf", "renamed", "rowan", GUIDELINES)
+        },
+        file_change("2026-11-10T16:20", "brand/logo.svg", "edited", "willow", LOGO),
+        file_change("2026-11-11T08:30", "brand/kit.zip", "edited", "ironbark", KIT),
+    ]
+}
+
+/// The commit of the changes made at `at`, one commit for all changes at the same minute.
+fn file_commit(at: &str) -> String {
+    hex(&format!("files {at}"), 40)
+}
+
+fn file_event_json(change: &FileChange) -> Value {
+    json!({
+        "commit": file_commit(change.at),
+        "path": change.path,
+        "time": at(change.at),
+        "author": change.author,
+        "kind": change.kind,
+        "from": change.from,
+        "size": change.bytes.len(),
+    })
+}
+
+/// The changes that made the file now at `path`, or deleted there, newest first: its own,
+/// and those at the paths it moved from.
+fn lineage(path: &str) -> Vec<FileChange> {
+    let mut wanted = path.to_owned();
+    let mut found = Vec::new();
+    for change in file_changes_oldest_first().into_iter().rev() {
+        if change.path == wanted {
+            if let Some(from) = change.from {
+                wanted = from.to_owned();
+            }
+            found.push(change);
+        }
+    }
+    found
+}
+
+/// Each file's path and bytes after every change up to and including the commit `upto`.
+fn tree_at(upto: Option<&str>) -> Vec<(&'static str, &'static [u8])> {
+    let changes = file_changes_oldest_first();
+    let last = upto.map(|commit| {
+        changes
+            .iter()
+            .find(|change| file_commit(change.at) == commit)
+            .map_or("", |change| change.at)
+    });
+    let mut tree: Vec<(&'static str, &'static [u8])> = Vec::new();
+    for change in changes
+        .iter()
+        .filter(|change| last.is_none_or(|last| change.at <= last))
+    {
+        tree.retain(|(path, _)| *path != change.path && Some(*path) != change.from);
+        if change.kind != "deleted" {
+            tree.push((change.path, change.bytes));
+        }
+    }
+    tree
+}
+
+/// A file as Mneme lists it, from its changes, newest first.
+fn file_json(changes: &[FileChange]) -> Option<Value> {
+    let newest = changes.first()?;
+    let oldest = changes.last()?;
+    let deleted = newest.kind == "deleted";
+    let last_bytes = changes
+        .iter()
+        .find(|change| change.kind != "deleted")
+        .map_or(0, |change| change.bytes.len());
+    Some(json!({
+        "path": newest.path,
+        "size": last_bytes,
+        "type": crate::raw::media(newest.path).0,
+        "created": at(oldest.at),
+        "updated": at(newest.at),
+        "versions": changes.iter().filter(|change| matches!(change.kind, "created" | "edited")).count(),
+        "author": newest.author,
+        "commit": file_commit(newest.at),
+        "deleted": deleted.then(|| at(newest.at)),
+    }))
+}
+
+#[derive(Debug, Deserialize)]
+struct FileParams {
+    offset: Option<usize>,
+    limit: Option<usize>,
+    under: Option<String>,
+    q: Option<String>,
+    sort: Option<String>,
+    order: Option<String>,
+    since: Option<i64>,
+    before: Option<i64>,
+    at: Option<String>,
+}
+
+impl FileParams {
+    fn cut<T>(&self, items: Vec<T>) -> Vec<T> {
+        items
+            .into_iter()
+            .skip(self.offset.unwrap_or(0))
+            .take(self.limit.unwrap_or(50).min(500))
+            .collect()
+    }
+}
+
+/// Live files, filtered, sorted and paged as Mneme does.
+async fn files(Query(params): Query<FileParams>) -> Response {
+    let under = params.under.clone().unwrap_or_default();
+    let words: Vec<String> = params
+        .q
+        .as_deref()
+        .unwrap_or_default()
+        .split_whitespace()
+        .map(str::to_lowercase)
+        .collect();
+    let mut found: Vec<Value> = tree_at(None)
+        .into_iter()
+        .filter(|(path, _)| under.is_empty() || path.starts_with(&format!("{under}/")))
+        .filter(|(path, _)| words.iter().all(|word| path.to_lowercase().contains(word)))
+        .filter_map(|(path, _)| file_json(&lineage(path)))
+        .collect();
+    let sort = params.sort.as_deref().unwrap_or("path");
+    let key = |file: &Value, field: &str| file[field].as_i64().unwrap_or(0);
+    match sort {
+        "updated" => found.sort_by_key(|file| Reverse(key(file, "updated"))),
+        "size" => found.sort_by_key(|file| Reverse(key(file, "size"))),
+        _ => found.sort_by(|a, b| a["path"].as_str().cmp(&b["path"].as_str())),
+    }
+    let largest_first = sort != "path";
+    let reverse = match params.order.as_deref() {
+        Some("asc") => largest_first,
+        Some("desc") => !largest_first,
+        _ => false,
+    };
+    if reverse {
+        found.reverse();
+    }
+    let total = found.len();
+    Json(json!({ "total": total, "files": params.cut(found) })).into_response()
+}
+
+fn no_file() -> Response {
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "error": "no file is at this path, and none was deleted there" })),
+    )
+        .into_response()
+}
+
+/// The file at a path now, or the one deleted there, with its changes, newest first.
+async fn file(Path(path): Path<String>, Query(params): Query<FileParams>) -> Response {
+    let changes = lineage(&path);
+    let Some(file) = file_json(&changes) else {
+        return no_file();
+    };
+    let total = changes.len();
+    let events: Vec<Value> = params.cut(changes.iter().map(file_event_json).collect());
+    Json(json!({ "file": file, "total": total, "events": events })).into_response()
+}
+
+/// Every change to a file, newest first.
+async fn file_changes(Query(params): Query<FileParams>) -> Response {
+    let events: Vec<Value> = file_changes_oldest_first()
+        .iter()
+        .rev()
+        .filter(|change| params.since.is_none_or(|since| at(change.at) >= since))
+        .filter(|change| params.before.is_none_or(|before| at(change.at) < before))
+        .map(file_event_json)
+        .collect();
+    let total = events.len();
+    Json(json!({ "total": total, "events": params.cut(events) })).into_response()
+}
+
+/// A file's bytes, now or at a commit, as Mneme sends them.
+async fn raw(
+    method: axum::http::Method,
+    headers: axum::http::HeaderMap,
+    Path(path): Path<String>,
+    Query(params): Query<FileParams>,
+) -> Response {
+    if let Some(at) = params.at.as_deref()
+        && at.parse::<crate::mneme::CommitId>().is_err()
+    {
+        return crate::raw::error(StatusCode::BAD_REQUEST, "at is not a full commit id");
+    }
+    let pinned = params.at.is_some();
+    let commit_known = params.at.as_deref().is_none_or(|asked| {
+        file_changes_oldest_first()
+            .iter()
+            .any(|change| file_commit(change.at) == asked)
+    });
+    let found = commit_known
+        .then(|| tree_at(params.at.as_deref()))
+        .unwrap_or_default()
+        .into_iter()
+        .find(|(held, _)| *held == path);
+    match found {
+        Some((_, bytes)) => crate::raw::answer(
+            &method,
+            &headers,
+            &path,
+            axum::body::Bytes::from_static(bytes),
+            pinned,
+        ),
+        None => crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path"),
+    }
+}
+
+/// The commit of the demo's change to a file at `at`, Stockholm time.
+#[must_use]
+pub fn file_commit_at(at: &str) -> String {
+    file_commit(at)
 }
 
 /// The page at a path now, or the one most recently renamed away from it, as Mneme finds
@@ -934,7 +1246,7 @@ async fn path(Path(asked): Path<String>) -> Response {
         Json(json!({ "id": page_id(page.key), "path": page.path, "current": current }))
             .into_response()
     };
-    if let Some(page) = PAGES.iter().find(|page| page.path == asked) {
+    if let Some(page) = PAGES.iter().chain([&BRAND]).find(|page| page.path == asked) {
         return found(page, true);
     }
     changes()

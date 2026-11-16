@@ -203,7 +203,8 @@ async fn recent_changes_are_grouped_by_day_with_their_overlaps() {
     assert_eq!(reply.status, 200);
     assert_eq!(texts(&reply.body, "h2.day").len(), 1);
     let events = texts(&reply.body, ".days li");
-    assert_eq!(events.len(), 13);
+    assert_eq!(events.len(), 25, "13 changes to pages and 12 to files");
+    assert_eq!(texts(&reply.body, ".days li[data-file]").len(), 12);
     assert!(
         events[1].contains("Writer edited the same lines"),
         "{}",
@@ -354,7 +355,26 @@ async fn older_changes_are_the_days_before_the_time_the_address_names() {
         .body;
     assert_eq!(
         attrs(&reply, "h2.day time", "datetime"),
-        ["2026-11-08T21:14:00+01:00", "2026-11-07T20:41:00+01:00"]
+        [
+            "2026-11-08T21:14:00+01:00",
+            "2026-11-07T20:41:00+01:00",
+            "2026-10-05T11:00:00+02:00",
+            "2026-10-02T14:12:00+02:00",
+            "2026-09-20T21:40:00+02:00"
+        ],
+        "the pages' days, and then the files'"
+    );
+    assert_eq!(
+        texts(&reply, "li[data-file] .kind"),
+        [
+            "file deleted, was brand/old-mark.png",
+            "file added in brand",
+            "file added in brand",
+            "file added in brand",
+            "file added in brand",
+            "file added in brand",
+            "file added in homelab"
+        ]
     );
     assert_eq!(
         attrs(&reply, ".pager a[rel=prev]", "href"),
@@ -500,10 +520,24 @@ async fn the_palette_finds_its_pages_at_the_url_the_page_names() {
         let page = page.as_object().unwrap();
         let mut keys: Vec<_> = page.keys().map(String::as_str).collect();
         keys.sort_unstable();
-        assert_eq!(keys, ["href", "m", "path", "t"], "{page:?}");
         assert!(page.values().all(serde_json::Value::is_string), "{page:?}");
-        assert!(page["href"].as_str().unwrap().starts_with("/wiki/page/"));
+        let href = page["href"].as_str().unwrap();
+        match page.get("g").and_then(serde_json::Value::as_str) {
+            None => {
+                assert_eq!(keys, ["href", "m", "path", "t"], "{page:?}");
+                assert!(href.starts_with("/wiki/page/"), "{page:?}");
+            }
+            Some("section") => assert_eq!(href, "/wiki/files"),
+            Some(group) => {
+                assert_eq!(group, "file", "{page:?}");
+                assert!(href.starts_with("/wiki/files/"), "{page:?}");
+            }
+        }
     }
+    let files: Vec<_> = pages.iter().filter(|page| page["g"] == "file").collect();
+    assert_eq!(files[0]["t"], "kit.zip", "newest first");
+    assert_eq!(files[0]["path"], "brand/kit.zip");
+    assert_eq!(files[0]["m"], "ZIP · 1.2 KiB");
 }
 
 #[tokio::test]

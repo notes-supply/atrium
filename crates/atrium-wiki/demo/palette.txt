@@ -1,0 +1,8 @@
+Saturday Loaves, the palette
+
+crust   #b5652b   the mark, buttons
+crumb   #f3e3c3   lines on crust
+char    #6b3a17   text on flour
+flour   #faf7f0   paper, the stall's board
+
+Crumb on crust, char on flour. Never crust on char.

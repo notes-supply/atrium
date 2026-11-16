@@ -39,6 +39,32 @@ pub fn number(n: u64) -> String {
     out
 }
 
+/// A size in bytes, in binary units as Mneme states its limits: `62 B`, `2.9 KiB`, `12 KiB`,
+/// `100 MiB`. One decimal below ten, none above.
+#[must_use]
+pub fn bytes(n: u64) -> String {
+    const UNITS: [&str; 4] = ["KiB", "MiB", "GiB", "TiB"];
+    if n < 1024 {
+        return format!("{n} B");
+    }
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "a size shown to one decimal place"
+    )]
+    let mut value = n as f64 / 1024.0;
+    let mut unit = 0;
+    while value >= 1024.0 && unit + 1 < UNITS.len() {
+        value /= 1024.0;
+        unit += 1;
+    }
+    let shown = if value < 9.95 {
+        format!("{value:.1}")
+    } else {
+        format!("{value:.0}")
+    };
+    format!("{shown} {}", UNITS[unit])
+}
+
 /// Text as a query string value.
 #[must_use]
 pub fn query(text: &str) -> String {
@@ -63,5 +89,17 @@ mod tests {
         assert_eq!(number(64), "64");
         assert_eq!(number(3118), "3,118");
         assert_eq!(number(1_234_567), "1,234,567");
+    }
+
+    #[test]
+    fn sizes_read_in_binary_units() {
+        assert_eq!(bytes(0), "0 B");
+        assert_eq!(bytes(62), "62 B");
+        assert_eq!(bytes(1023), "1023 B");
+        assert_eq!(bytes(1024), "1.0 KiB");
+        assert_eq!(bytes(3000), "2.9 KiB");
+        assert_eq!(bytes(12_000), "12 KiB");
+        assert_eq!(bytes(104_857_600), "100 MiB");
+        assert_eq!(bytes(10 * 1024 * 1024 - 1), "10 MiB");
     }
 }

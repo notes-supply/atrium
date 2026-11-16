@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use axum::Router;
 use axum::extract::{Path, Query, Request, State};
-use axum::http::{StatusCode, header};
+use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -28,6 +28,9 @@ pub enum Stub {
     Down,
     /// Answers every route with 500.
     Failing,
+    /// Answers as a Mneme from before files did: every route of the examples but the
+    /// files', which answer 404 as an unknown route.
+    Older,
 }
 
 /// A running stand-in.
@@ -165,11 +168,107 @@ async fn path(Path(asked): Path<String>) -> Response {
         })
 }
 
+async fn files(Query(paging): Query<Paging>) -> Response {
+    paged(include_str!("../fixtures/files.json"), "files", &paging)
+}
+
+async fn file(Path(asked): Path<String>) -> Response {
+    if asked == "brand/archive/Kit 2026.zip" {
+        return json(include_str!("../fixtures/file.json").to_owned());
+    }
+    let body = r#"{"error":"no file is at this path, and none was deleted there"}"#.to_owned();
+    (StatusCode::NOT_FOUND, json(body)).into_response()
+}
+
+async fn file_changes(Query(paging): Query<Paging>) -> Response {
+    paged(
+        include_str!("../fixtures/file-changes.json"),
+        "events",
+        &paging,
+    )
+}
+
+/// Some bytes for each file of the examples, as long as its listing says, and for the
+/// tests: `slow.bin` comes in pieces 400 ms apart, `busy.bin` is a file the server cannot
+/// send, and `bare.svg` comes without a policy.
+async fn raw(
+    method: Method,
+    headers: HeaderMap,
+    Path(path): Path<String>,
+    Query(at): Query<At>,
+) -> Response {
+    match path.as_str() {
+        "slow.bin" => {
+            let pieces = futures_util::stream::unfold(0_u8, |sent| async move {
+                if sent == 5 {
+                    return None;
+                }
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                Some((Ok::<_, std::io::Error>(vec![b'a' + sent; 1024]), sent + 1))
+            });
+            return (
+                [
+                    (header::CONTENT_TYPE, "application/octet-stream"),
+                    (header::CONTENT_LENGTH, "5120"),
+                    (header::CONTENT_DISPOSITION, "attachment; filename=\"slow.bin\""),
+                    (header::CONTENT_SECURITY_POLICY, "default-src 'none'; style-src 'unsafe-inline'; sandbox"),
+                ],
+                axum::body::Body::from_stream(pieces),
+            )
+                .into_response();
+        }
+        "busy.bin" => {
+            return crate::raw::error(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "the file is stored as a delta",
+            );
+        }
+        _ => {}
+    }
+    let files: Value =
+        serde_json::from_str(include_str!("../fixtures/files.json")).unwrap_or_default();
+    let size = files["files"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|file| file["path"] == path.as_str())
+        .and_then(|file| file["size"].as_u64());
+    let Some(size) = size.or_else(|| (path == "bare.svg").then_some(40)) else {
+        return crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path");
+    };
+    let bytes: Vec<u8> = (0..size).map(|i| b"0123456789abcdef"[(i % 16) as usize]).collect();
+    let mut answer = crate::raw::answer(
+        &method,
+        &headers,
+        &path,
+        axum::body::Bytes::from(bytes),
+        at.at.is_some(),
+    );
+    if path == "bare.svg" {
+        answer.headers_mut().remove(header::CONTENT_SECURITY_POLICY);
+    }
+    answer
+}
+
+#[derive(Deserialize)]
+struct At {
+    at: Option<String>,
+}
+
 fn of_alpha(id: &str, answer: impl FnOnce() -> Response) -> Response {
     if id == ALPHA { answer() } else { missing() }
 }
 
 fn routes() -> Router {
+    older()
+        .route("/v1/files", get(files))
+        .route("/v1/files/{*path}", get(file))
+        .route("/v1/changes/files", get(file_changes))
+        .route("/v1/raw/{*path}", get(raw))
+}
+
+/// Every route but the files'.
+fn older() -> Router {
     Router::new()
         .route("/v1/pages", get(pages))
         .route("/v1/pages/{id}", get(page))
@@ -231,6 +330,10 @@ pub async fn serve(stub: Stub) -> Running {
             }))
         }
         Stub::Failing => Router::new().fallback(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+        Stub::Older => older().fallback(|| async {
+            let body = r#"{"error":"no such route"}"#.to_owned();
+            (StatusCode::NOT_FOUND, json(body)).into_response()
+        }),
         Stub::Down => {
             drop(listener);
             return Running { base, requests };

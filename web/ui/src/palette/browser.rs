@@ -47,7 +47,11 @@ struct Engine {
 
 #[derive(Default)]
 struct Shared {
-    /// The wiki's pages, once loaded from the URL in a palette element's `data-pages`.
+    /// Sections the page list names, such as the wiki's files, which the navigation leaves
+    /// out.
+    sections: Vec<Item>,
+    /// The wiki's pages and files, once loaded from the URL in a palette element's
+    /// `data-pages`.
     pages: Vec<Item>,
     loading: bool,
     engines: Vec<Rc<RefCell<Engine>>>,
@@ -415,8 +419,9 @@ fn close(engine: &Rc<RefCell<Engine>>) {
     }
 }
 
-/// Every destination: the sections by their links' `data-title`, the wiki's pages, and the
-/// settings page with the settings that run in place.
+/// Every destination: the sections by their links' `data-title` and those the page list
+/// adds, the wiki's pages and files, and the settings page with the settings that run in
+/// place.
 fn items() -> Vec<Item> {
     let mut items = Vec::new();
     if let Some(root) = dom::root() {
@@ -432,7 +437,10 @@ fn items() -> Vec<Item> {
             });
         }
     }
-    SHARED.with_borrow(|shared| items.extend(shared.pages.iter().cloned()));
+    SHARED.with_borrow(|shared| {
+        items.extend(shared.sections.iter().cloned());
+        items.extend(shared.pages.iter().cloned());
+    });
     if let Some(link) = dom::document().and_then(|document| {
         document
             .query_selector(".mast a.settings-btn")
@@ -484,7 +492,7 @@ fn load_pages() {
         return;
     };
     dom::fetch(&url, web_sys::Response::json, |list| {
-        let pages: Vec<Item> = Array::from(&list)
+        let (sections, pages): (Vec<Item>, Vec<Item>) = Array::from(&list)
             .iter()
             .map(|page| {
                 let text = |key: &str| {
@@ -494,15 +502,20 @@ fn load_pages() {
                         .unwrap_or_default()
                 };
                 Item {
-                    group: "Pages",
+                    group: match text("g").as_str() {
+                        "section" => "Sections",
+                        "file" => "Files",
+                        _ => "Pages",
+                    },
                     title: text("t"),
                     sub: text("path"),
                     hint: text("m"),
                     action: Action::Go(text("href")),
                 }
             })
-            .collect();
+            .partition(|item| item.group == "Sections");
         let engines = SHARED.with_borrow_mut(|shared| {
+            shared.sections = sections;
             shared.pages = pages;
             shared.engines.clone()
         });

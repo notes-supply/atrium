@@ -9,7 +9,10 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
-use reqwest::{Client, StatusCode};
+use reqwest::header::{
+    CONTENT_RANGE, HeaderMap, HeaderName, HeaderValue, IF_NONE_MATCH, IF_RANGE, RANGE,
+};
+use reqwest::{Client, Method, Response, StatusCode};
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
@@ -365,6 +368,149 @@ pub struct QuestionPage {
     pub title: String,
 }
 
+/// A file of the wiki that is not a page, such as an image, a PDF or a zip, named by its path.
+#[derive(Debug, Clone, Deserialize)]
+pub struct File {
+    pub path: String,
+    /// Its size in bytes, the last it had for a deleted file.
+    pub size: u64,
+    /// The `Content-Type` its bytes are sent with.
+    #[serde(rename = "type")]
+    pub media: String,
+    pub created: i64,
+    /// The time of its newest event.
+    pub updated: i64,
+    /// How many events changed its bytes, the creation included.
+    pub versions: u64,
+    /// Who made its newest event.
+    pub author: String,
+    /// The commit of its newest event.
+    pub commit: CommitId,
+    /// When it was deleted, if it was.
+    pub deleted: Option<i64>,
+}
+
+/// One page of a listing of files.
+#[derive(Debug, Deserialize)]
+pub struct Files {
+    pub total: u64,
+    pub files: Vec<File>,
+}
+
+/// A file with its events, newest first.
+#[derive(Debug, Deserialize)]
+pub struct FileDetail {
+    pub file: File,
+    pub total: u64,
+    pub events: Vec<FileEvent>,
+}
+
+/// A commit's change to one file.
+#[derive(Debug, Clone, Deserialize)]
+pub struct FileEvent {
+    pub commit: CommitId,
+    /// The file's path after the event.
+    pub path: String,
+    pub time: i64,
+    pub author: String,
+    pub kind: EventKind,
+    /// The old path, for a move.
+    #[serde(default)]
+    pub from: Option<String>,
+    /// Its size after the event: 0 for a deletion.
+    pub size: u64,
+}
+
+/// One page of events across all files, newest first.
+#[derive(Debug, Deserialize)]
+pub struct FileEvents {
+    pub total: u64,
+    pub events: Vec<FileEvent>,
+}
+
+/// What a listing of files is sorted by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileSort {
+    /// By path, which Mneme compares byte by byte.
+    Path,
+    Updated,
+    Size,
+}
+
+impl FileSort {
+    /// Every sort, in the order a table shows them.
+    pub const ALL: [Self; 3] = [Self::Path, Self::Updated, Self::Size];
+
+    /// The name Mneme uses.
+    #[must_use]
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Path => "path",
+            Self::Updated => "updated",
+            Self::Size => "size",
+        }
+    }
+
+    /// The order Mneme uses when none is given: A to Z for paths, largest first otherwise.
+    #[must_use]
+    pub const fn default_order(self) -> Order {
+        match self {
+            Self::Path => Order::Asc,
+            _ => Order::Desc,
+        }
+    }
+}
+
+impl FromStr for FileSort {
+    type Err = String;
+
+    fn from_str(name: &str) -> Result<Self, Self::Err> {
+        Self::ALL
+            .into_iter()
+            .find(|sort| sort.name() == name)
+            .ok_or_else(|| format!("unknown sort {name:?}"))
+    }
+}
+
+/// Which files a listing keeps, how it sorts them and which part of it to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FileListing<'a> {
+    /// Only files inside this folder, at any depth.
+    pub under: Option<&'a str>,
+    /// Words that must each be in the path, without case.
+    pub words: Option<&'a str>,
+    pub sort: Option<FileSort>,
+    pub order: Option<Order>,
+    pub offset: u64,
+    pub limit: u64,
+}
+
+impl FileListing<'_> {
+    fn query(self) -> Vec<(&'static str, String)> {
+        let mut query = vec![
+            ("offset", self.offset.to_string()),
+            ("limit", self.limit.to_string()),
+        ];
+        if let Some(under) = self.under.filter(|under| !under.is_empty()) {
+            query.push(("under", under.to_owned()));
+        }
+        if let Some(words) = self.words.filter(|words| !words.trim().is_empty()) {
+            query.push(("q", words.to_owned()));
+        }
+        if let Some(sort) = self.sort {
+            query.push(("sort", sort.name().to_owned()));
+        }
+        if let Some(order) = self.order {
+            query.push(("order", order.name().to_owned()));
+        }
+        query
+    }
+}
+
+/// The request headers a download passes on to Mneme: a range, and what the browser already
+/// holds.
+pub const RAW_REQUEST_HEADERS: [HeaderName; 3] = [RANGE, IF_RANGE, IF_NONE_MATCH];
+
 /// What a listing of pages is sorted by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Sort {
@@ -545,6 +691,10 @@ impl Listing {
 #[derive(Debug, Clone)]
 pub struct Mneme {
     http: Client,
+    /// For a file's bytes, which may take far longer than one call: only the connection and
+    /// the wait for the response's headers are bounded.
+    stream: Client,
+    timeout: Duration,
     base: String,
     status: Arc<Mutex<Option<Status>>>,
     heard: Arc<AtomicI64>,
@@ -570,8 +720,11 @@ impl Mneme {
             .timeout(timeout)
             .connect_timeout(timeout)
             .build()?;
+        let stream = Client::builder().connect_timeout(timeout).build()?;
         Ok(Self {
             http,
+            stream,
+            timeout,
             base: base.trim_end_matches('/').to_owned(),
             status: Arc::default(),
             heard: Arc::default(),
@@ -760,14 +913,7 @@ impl Mneme {
     ///
     /// Any [`MnemeError`] but [`MnemeError::NotFound`].
     pub async fn path(&self, path: &str) -> Result<Option<PathMatch>, MnemeError> {
-        let segments: Vec<String> = path
-            .split('/')
-            .map(|segment| utf8_percent_encode(segment, SEGMENT).to_string())
-            .collect();
-        match self
-            .get(&format!("paths/{}", segments.join("/")), &[])
-            .await
-        {
+        match self.get(&format!("paths/{}", encoded(path)), &[]).await {
             Ok(found) => Ok(Some(found)),
             Err(MnemeError::NotFound) => Ok(None),
             Err(error) => Err(error),
@@ -817,6 +963,166 @@ impl Mneme {
     pub async fn machines(&self) -> Result<Machines, MnemeError> {
         self.get("machines", &[]).await
     }
+
+    /// Live files, sorted, filtered and paged, or `None` from a Mneme that lists no files,
+    /// which answers 404 for the route.
+    ///
+    /// # Errors
+    ///
+    /// Any [`MnemeError`] but [`MnemeError::NotFound`].
+    pub async fn files(&self, listing: FileListing<'_>) -> Result<Option<Files>, MnemeError> {
+        or_none(self.get("files", &listing.query()).await)
+    }
+
+    /// The file at `path` now, or the one most recently deleted there, with its events
+    /// newest first.
+    ///
+    /// # Errors
+    ///
+    /// [`MnemeError::NotFound`] when no file is or was at the path, or on a Mneme that lists
+    /// no files, or any other [`MnemeError`].
+    pub async fn file(
+        &self,
+        path: &str,
+        offset: u64,
+        limit: u64,
+    ) -> Result<FileDetail, MnemeError> {
+        self.get(
+            &format!("files/{}", encoded(path)),
+            &paged(offset, limit, None),
+        )
+        .await
+    }
+
+    /// Events across all files, newest first, or `None` from a Mneme that lists no files.
+    ///
+    /// # Errors
+    ///
+    /// Any [`MnemeError`] but [`MnemeError::NotFound`].
+    pub async fn file_changes(
+        &self,
+        offset: u64,
+        limit: u64,
+        since: Option<i64>,
+        before: Option<i64>,
+    ) -> Result<Option<FileEvents>, MnemeError> {
+        let mut query = paged(offset, limit, since);
+        if let Some(before) = before {
+            query.push(("before", before.to_string()));
+        }
+        or_none(self.get("changes/files", &query).await)
+    }
+
+    /// The bytes of the file at `path`, at `at` or on `main` now, as Mneme answers them:
+    /// the response with its body still to read. `method` is `GET` or `HEAD`, and `headers`
+    /// the request's [`RAW_REQUEST_HEADERS`]. Only the wait for the response's headers is
+    /// bounded by the timeout; the body is read as the caller asks for it.
+    ///
+    /// # Errors
+    ///
+    /// [`MnemeError::NotFound`] when nothing is at the path then, [`MnemeError::Refused`] for
+    /// a commit Mneme cannot read, [`MnemeError::Away`] when Mneme does not answer in time or
+    /// cannot send the file, and [`MnemeError::Broken`] for any other status.
+    pub async fn raw(
+        &self,
+        path: &str,
+        at: Option<&CommitId>,
+        method: Method,
+        headers: &HeaderMap,
+    ) -> Result<Response, MnemeError> {
+        let mut request = self
+            .stream
+            .request(method, format!("{}/v1/raw/{}", self.base, encoded(path)));
+        if let Some(at) = at {
+            request = request.query(&[("at", at.as_str())]);
+        }
+        for name in RAW_REQUEST_HEADERS {
+            for value in headers.get_all(&name) {
+                request = request.header(&name, value);
+            }
+        }
+        let response = tokio::time::timeout(self.timeout, request.send())
+            .await
+            .map_err(|_| MnemeError::Away("raw: no answer in time".to_owned()))?
+            .map_err(|error| MnemeError::Away(error.to_string()))?;
+        let status = response.status();
+        if !status.is_server_error() {
+            self.heard.store(now(), Ordering::Relaxed);
+        }
+        match status {
+            StatusCode::OK
+            | StatusCode::PARTIAL_CONTENT
+            | StatusCode::NOT_MODIFIED
+            | StatusCode::RANGE_NOT_SATISFIABLE => Ok(response),
+            StatusCode::NOT_FOUND => Err(MnemeError::NotFound),
+            StatusCode::BAD_REQUEST => Err(MnemeError::Refused(
+                "Mneme cannot read that commit".to_owned(),
+            )),
+            status if status.is_server_error() => {
+                Err(MnemeError::Away(format!("raw answered {status}")))
+            }
+            status => Err(MnemeError::Broken(format!("raw answered {status}"))),
+        }
+    }
+
+    /// The first `most` bytes of the file at `path`, and whether there are more, read within
+    /// one call's timeout.
+    ///
+    /// # Errors
+    ///
+    /// As [`Mneme::raw`].
+    pub async fn raw_start(&self, path: &str, most: usize) -> Result<(Vec<u8>, bool), MnemeError> {
+        let away = |error: reqwest::Error| MnemeError::Away(error.to_string());
+        let read = async {
+            let mut headers = HeaderMap::new();
+            if let Ok(range) = HeaderValue::from_str(&format!("bytes=0-{}", most.saturating_sub(1)))
+            {
+                headers.insert(RANGE, range);
+            }
+            let mut response = self.raw(path, None, Method::GET, &headers).await?;
+            if response.status() == StatusCode::RANGE_NOT_SATISFIABLE {
+                return Ok((Vec::new(), false));
+            }
+            let mut bytes = Vec::with_capacity(most);
+            while bytes.len() <= most {
+                match response.chunk().await.map_err(away)? {
+                    Some(chunk) => bytes.extend_from_slice(&chunk),
+                    None => break,
+                }
+            }
+            let whole = response
+                .headers()
+                .get(CONTENT_RANGE)
+                .and_then(|range| range.to_str().ok())
+                .and_then(|range| range.rsplit_once('/'))
+                .and_then(|(_, size)| size.parse::<usize>().ok())
+                .unwrap_or(bytes.len());
+            let more = whole > most || bytes.len() > most;
+            bytes.truncate(most);
+            Ok((bytes, more))
+        };
+        tokio::time::timeout(self.timeout, read)
+            .await
+            .unwrap_or_else(|_| Err(MnemeError::Away("raw: too slow".to_owned())))
+    }
+}
+
+/// A route Mneme does not have, which answers 404, as no answer.
+fn or_none<T>(answer: Result<T, MnemeError>) -> Result<Option<T>, MnemeError> {
+    match answer {
+        Ok(found) => Ok(Some(found)),
+        Err(MnemeError::NotFound) => Ok(None),
+        Err(error) => Err(error),
+    }
+}
+
+/// A path for a route that takes one, each segment escaped.
+fn encoded(path: &str) -> String {
+    let segments: Vec<String> = path
+        .split('/')
+        .map(|segment| utf8_percent_encode(segment, SEGMENT).to_string())
+        .collect();
+    segments.join("/")
 }
 
 /// What a part of a URL's path may not hold as it is.

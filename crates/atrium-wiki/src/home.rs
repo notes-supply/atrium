@@ -15,11 +15,14 @@ use atrium_ui::{Page, Shell};
 use maud::{Markup, html};
 
 use crate::machines::{Copy, Known, judge, map_figure};
-use crate::mneme::{Events, Machines, Mneme, MnemeError, PageId, Questions};
-use crate::routes::{Loser, RowLook, change_row, losers, page_href, title_of, titles};
+use crate::mneme::{Events, FileEvents, Machines, Mneme, MnemeError, PageId, Questions};
+use crate::routes::{Change, Loser, RowLook, any_row, losers, merged, page_href, titles};
 
 /// Changes the tile lists.
 const TILE_CHANGES: usize = 8;
+/// File events home reads, for the tile and to count the files changed since the last
+/// visit.
+const FILE_EVENTS: u64 = 50;
 /// Events the week reads, at most.
 const WEEK_MOST: u64 = 2000;
 const DAY: i64 = 24 * 60 * 60;
@@ -35,11 +38,26 @@ pub struct Facts {
     pub questions: Option<u64>,
 }
 
-/// What changed: how many pages since the last visit, and when the newest change was.
+/// What changed: how many pages and files since the last visit, and when the newest change
+/// was.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChangeFacts {
     pub pages_since: u64,
+    pub files_since: u64,
     pub newest: Option<i64>,
+}
+
+/// `Five pages and one file`, `One file`.
+fn changed(pages: u64, files: u64) -> String {
+    match (pages, files) {
+        (pages, 0) => cap(&count(pages, "page", "pages")),
+        (0, files) => cap(&count(files, "file", "files")),
+        (pages, files) => format!(
+            "{} and {}",
+            cap(&count(pages, "page", "pages")),
+            count(files, "file", "files")
+        ),
+    }
 }
 
 /// `a, b, and c`: each machine's clause, the last after "and".
@@ -60,10 +78,11 @@ fn listed(parts: Vec<Markup>) -> Markup {
 pub fn sentence(local: &Local, facts: &Facts) -> Vec<Markup> {
     let mut said = Vec::new();
     if let Some(changes) = facts.changes {
-        said.push(match (facts.last, changes.pages_since, changes.newest) {
-            (Some(last), 0, _) => html! { "Nothing changed since you were last here at " (local.time(last, &local.hm(last))) "." },
-            (Some(last), pages, newest) => html! {
-                a href="/wiki/changes#new" { (cap(&count(pages, "page", "pages"))) " changed" }
+        let since = (changes.pages_since, changes.files_since);
+        said.push(match (facts.last, since, changes.newest) {
+            (Some(last), (0, 0), _) => html! { "Nothing changed since you were last here at " (local.time(last, &local.hm(last))) "." },
+            (Some(last), (pages, files), newest) => html! {
+                a href="/wiki/changes#new" { (changed(pages, files)) " changed" }
                 " since you were last here at " (local.time(last, &local.hm(last)))
                 @if let Some(newest) = newest { ", the newest " (local.ago(newest)) }
                 "."
@@ -171,14 +190,13 @@ fn week_tile(local: &Local, events: &Events) -> Markup {
 fn changes_tile(
     local: &Local,
     last: Option<i64>,
-    recent: &Events,
+    recent: &[Change<'_>],
     titles: &HashMap<PageId, String>,
     losers: &HashMap<String, Loser>,
 ) -> Markup {
     let new = recent
-        .events
         .iter()
-        .filter(|event| last.is_some_and(|last| event.time > last))
+        .filter(|change| last.is_some_and(|last| change.time() > last))
         .count();
     let look = RowLook {
         day: true,
@@ -193,8 +211,8 @@ fn changes_tile(
                 }
             }
             ol.change-list {
-                @for event in recent.events.iter().take(TILE_CHANGES) {
-                    (change_row(local, last, event, title_of(titles, event), losers, look))
+                @for change in recent {
+                    (any_row(local, last, *change, titles, losers, look))
                 }
             }
             a.more href="/wiki/changes" { "All changes" }
@@ -299,23 +317,33 @@ async fn changes_since(mneme: &Mneme, since: i64) -> Result<Events, MnemeError> 
 }
 
 /// How many pages changed since the last visit, from the week's events and the newest few,
-/// and when the newest change was.
+/// how many files, from the newest file events, and when the newest change was.
 fn change_facts(
     last: Option<i64>,
     recent: Option<&Events>,
     week: Option<&Events>,
+    files: Option<&FileEvents>,
 ) -> Option<ChangeFacts> {
     let recent = recent?;
+    let is_new = |time: i64| last.is_some_and(|last| time > last);
     let pages: HashSet<&PageId> = week
         .map_or(&recent.events, |week| &week.events)
         .iter()
         .chain(&recent.events)
-        .filter(|event| last.is_some_and(|last| event.time > last))
+        .filter(|event| is_new(event.time))
         .map(|event| &event.page)
         .collect();
+    let file_events = files.map_or(&[][..], |files| &files.events);
+    let paths: HashSet<&str> = file_events
+        .iter()
+        .filter(|event| is_new(event.time))
+        .map(|event| event.path.as_str())
+        .collect();
+    let newest_file = file_events.first().map(|event| event.time);
     Some(ChangeFacts {
         pages_since: u64::try_from(pages.len()).unwrap_or(0),
-        newest: recent.events.first().map(|event| event.time),
+        files_since: u64::try_from(paths.len()).unwrap_or(0),
+        newest: recent.events.first().map(|event| event.time).max(newest_file),
     })
 }
 
@@ -343,11 +371,12 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
         .map_or(local.seconds() - 7 * DAY, |start| {
             start.timestamp().as_second() - 6 * DAY
         });
-    let (recent, week_events, titles, machines, status, questions) = tokio::join!(
+    let (recent, files, week_events, titles, machines, status, questions) = tokio::join!(
         by(
             deadline,
             mneme.changes(0, u64::try_from(TILE_CHANGES).unwrap_or(8), None)
         ),
+        by(deadline, mneme.file_changes(0, FILE_EVENTS, None, None)),
         by(deadline, changes_since(mneme, week_start)),
         by(deadline, titles(mneme)),
         by(deadline, mneme.machines()),
@@ -356,6 +385,7 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
     );
     let all_away = [
         recent.is_err(),
+        files.is_err(),
         week_events.is_err(),
         titles.is_err(),
         machines.is_err(),
@@ -380,7 +410,12 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
     });
     let facts = Facts {
         last,
-        changes: change_facts(last, recent.as_ref().ok(), week_events.as_ref().ok()),
+        changes: change_facts(
+            last,
+            recent.as_ref().ok(),
+            week_events.as_ref().ok(),
+            files.as_ref().ok().and_then(Option::as_ref),
+        ),
         machines: copies.as_ref().map(|copies| machine_facts(local, copies)),
         questions: questions
             .as_ref()
@@ -398,14 +433,22 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
     };
     let figure = map_figure(local, &known, "The wiki", mneme.record());
     let no_titles = HashMap::new();
+    let file_events = match &files {
+        Ok(Some(files)) => &files.events[..],
+        _ => &[],
+    };
     let mut shown = vec![match &recent {
-        Ok(recent) => changes_tile(
-            local,
-            last,
-            recent,
-            titles.as_ref().unwrap_or(&no_titles),
-            &losers,
-        ),
+        Ok(recent) => {
+            let mut rows = merged(&recent.events, file_events);
+            rows.truncate(TILE_CHANGES);
+            changes_tile(
+                local,
+                last,
+                &rows,
+                titles.as_ref().unwrap_or(&no_titles),
+                &losers,
+            )
+        }
         Err(_) => away_tile("changes", "Recent changes"),
     }];
     match &questions {
@@ -461,6 +504,7 @@ mod tests {
             last: Some(LAST),
             changes: Some(ChangeFacts {
                 pages_since: 0,
+                files_since: 0,
                 newest: Some(LAST - 600),
             }),
             machines: Some(vec![
@@ -481,6 +525,7 @@ mod tests {
             last: Some(LAST),
             changes: Some(ChangeFacts {
                 pages_since: 5,
+                files_since: 0,
                 newest: Some(NEWEST),
             }),
             ..Facts::default()
@@ -489,6 +534,29 @@ mod tests {
             said(&facts),
             "Five pages changed since you were last here at 07:48, the newest 29 minutes ago."
         );
+        let with_files = Facts {
+            last: Some(LAST),
+            changes: Some(ChangeFacts {
+                pages_since: 5,
+                files_since: 1,
+                newest: Some(NEWEST),
+            }),
+            ..Facts::default()
+        };
+        assert_eq!(
+            said(&with_files),
+            "Five pages and one file changed since you were last here at 07:48, the newest 29 minutes ago."
+        );
+        let files_only = Facts {
+            last: Some(LAST),
+            changes: Some(ChangeFacts {
+                pages_since: 0,
+                files_since: 2,
+                newest: Some(NEWEST),
+            }),
+            ..Facts::default()
+        };
+        assert!(said(&files_only).starts_with("Two files changed since"));
     }
 
     #[test]
@@ -496,6 +564,7 @@ mod tests {
         let facts = Facts {
             changes: Some(ChangeFacts {
                 pages_since: 0,
+                files_since: 0,
                 newest: Some(NEWEST),
             }),
             ..Facts::default()

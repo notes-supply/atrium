@@ -32,6 +32,72 @@
   .keyboard { padding: 18px 16px; }
 }
 
+/* ── files ────────────────────────────────────────────────────────────── */
+/* A file's kind is a small mono mark, quiet as a path: in the list, beside a link to the
+   file in a page, and beside a file in recent changes. */
+.file-mark, .file-kind { display: inline-block; font: 500 var(--fs-mono-s)/1 var(--mono); letter-spacing: .04em; color: var(--ink-3); border: 1px solid var(--rule-2); padding: 3px 4px 2px; white-space: nowrap; vertical-align: .12em; }
+.file-link .file-mark { margin-left: .4em; text-decoration: none; font-weight: 400; }
+.file-link:is(:hover, [data-force~="hover"]) .file-mark { color: var(--accent); border-color: currentColor; }
+.folder-kind { border-style: dashed; }
+
+/* An image in a page fits the column and never widens it. One on a line of its own sits on
+   a hairline frame over a fine checker, so a transparent logo reads in day and night. */
+.paper img { max-width: 100%; height: auto; vertical-align: middle; }
+.paper p:has(> img:only-child) { max-width: none; }
+.paper p > img:only-child, .img-preview img { display: block; box-sizing: content-box; max-width: calc(100% - 26px); padding: 12px; border: 1px solid var(--rule); background: repeating-conic-gradient(var(--code-bg) 0 25%, var(--paper) 0 50%) 0 0 / 12px 12px; }
+
+/* The pages and the files, one switch at the head of both lists. */
+.wiki-switch { justify-self: start; display: flex; gap: 2px; align-items: baseline; margin-top: 4px; font: 500 var(--fs-mono-l)/1 var(--mono); }
+.wiki-switch .n { color: var(--ink-3); font-weight: 400; margin-left: 4px; }
+
+/* The list of files: the pages list's ledger, with the kind first and a filter above. */
+.file-find { display: flex; flex-wrap: wrap; gap: 10px 12px; align-items: center; padding: 14px 0 2px; }
+.file-find input { flex: 0 1 22em; min-width: 0; font-family: var(--serif); font-size: 18px; }
+.file-ledger .kind-mark { width: 4.5em; }
+.file-ledger .pth a { color: var(--ink-3); }
+.folder-row .ttl { font-family: var(--mono); font-size: var(--fs-mono-l); }
+.files-empty { padding: 22px 0 6px; color: var(--ink-2); }
+
+/* A file's page: the preview and its download, what the record says of it, and its
+   history below. */
+.file-page { align-items: start; }
+.file-view { grid-column: 1 / 9; padding: 22px 26px 24px; display: grid; gap: 18px; min-width: 0; }
+.file-facts { grid-column: 9 / -1; position: static; }
+.file-events { grid-column: 1 / -1; display: grid; gap: 6px; }
+.file-events .rail-h { padding-top: 14px; }
+.file-preview { margin: 0; min-width: 0; }
+.img-preview img { margin: 0 auto; max-height: 70vh; width: auto; object-fit: contain; }
+.media-preview :is(audio, video) { display: block; width: 100%; max-height: 70vh; }
+.text-preview { margin: 0; }
+.text-preview pre { max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+.open-preview { display: grid; gap: 12px; justify-items: start; padding: 28px 0 10px; }
+.open-preview p { color: var(--ink-2); font-size: 18px; max-width: 32em; }
+.open-preview .open-kind { font: 500 40px/1 var(--mono); letter-spacing: .02em; color: var(--ink-3); }
+.file-actions { display: flex; gap: 14px; flex-wrap: wrap; padding-top: 4px; border-top: 1px solid var(--rule); padding-top: 18px; }
+.download-btn .size { font-weight: 400; color: var(--ink-2); }
+
+/* A file among recent changes: its size where a page's words are. */
+.change-list .fsize { font: 400 var(--fs-mono)/1 var(--mono); color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.change-list .file-mark { vertical-align: .18em; }
+
+@media (max-width: 1180px) {
+  .file-view { grid-column: 1 / 8; }
+  .file-facts { grid-column: 8 / -1; }
+}
+@media (max-width: 899px) {
+  .file-view { padding: 16px 16px 18px; }
+  .file-facts { padding: 18px 16px; }
+  .file-events { padding: 4px 14px 16px; }
+  .file-find input { flex: 1 1 12em; }
+  .file-ledger tbody tr { grid-template-columns: 3.4em auto 1fr; }
+  .file-ledger td:first-child { grid-column: 1; }
+  .file-ledger td:nth-child(2) { grid-column: 2 / -1; }
+  .file-ledger td:nth-child(3) { grid-column: 2; }
+  .file-ledger td:nth-child(4) { grid-column: 3; }
+  .paper p > img:only-child, .img-preview img { padding: 8px; max-width: calc(100% - 18px); }
+  .change-list .fsize { grid-column: 3; grid-row: 1; }
+}
+
 /* Slots the browser modules fill, such as "Continue reading", stay out of the layout until
    then, whatever display their class gives them. */
 [hidden] { display: none !important; }
