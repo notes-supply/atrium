@@ -412,20 +412,30 @@ fn mark_of(path: &str, at: Option<&str>, known: Option<&Known>) -> Option<String
 }
 
 /// Turns an image on another site, which the page's policy would not load, into a link to
-/// it, named by its alternative text and ending in "(image)".
+/// it, named by its alternative text and ending in "(image)". An image already inside a link,
+/// such as a badge that links a build, becomes those words inside that link, so there is
+/// never a link in a link and the link leads where it was written to.
 fn link_instead<'a>(arena: &'a Arena<'a>, node: &'a AstNode<'a>) {
     let link = match &node.data().value {
         NodeValue::Image(image) => NodeLink::clone(image),
         _ => return,
     };
     let named = node.children().next().is_some();
-    node.data_mut().value = NodeValue::Link(Box::new(link.clone()));
     let words = if named {
         " (image)".to_owned()
     } else {
         format!("{} (image)", link.url)
     };
     node.append(arena.alloc(AstNode::from(NodeValue::Text(words.into()))));
+    let in_a_link = node
+        .ancestors()
+        .skip(1)
+        .any(|ancestor| matches!(ancestor.data().value, NodeValue::Link(_)));
+    if in_a_link {
+        unwrap(node);
+    } else {
+        node.data_mut().value = NodeValue::Link(Box::new(link));
+    }
 }
 
 /// Puts a node's children where it was, and drops the node.
@@ -757,6 +767,24 @@ mod tests {
         assert!(
             out.contains(r#"<a href="//example.com/e.png">e (image)</a>"#),
             "{out}"
+        );
+        let badge = served(
+            "[![Status](https://example.com/badge.svg)](https://example.com/build) and [![](https://example.com/b.svg)](/wiki/changes)",
+            "a.md",
+            None,
+        );
+        assert!(
+            badge.contains(r#"<a href="https://example.com/build">Status (image)</a>"#),
+            "the link keeps its target, with the image's words in it: {badge}"
+        );
+        assert!(
+            badge.contains(">https://example.com/b.svg (image)</a>"),
+            "{badge}"
+        );
+        assert_eq!(
+            badge.matches("<a ").count(),
+            2,
+            "no link in a link: {badge}"
         );
         let dropped = served(
             "![pixel](data:image/png;base64,AAAA) ![x](javascript:x)",
