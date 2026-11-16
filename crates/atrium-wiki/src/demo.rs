@@ -1240,6 +1240,15 @@ fn no_file() -> Response {
 
 /// The file at a path now, or the one deleted there, with its changes, newest first.
 async fn file(Path(path): Path<String>, Query(params): Query<FileParams>) -> Response {
+    // Nothing is at a path a file moved away from, and nothing was deleted there.
+    let moved_away = file_changes_oldest_first()
+        .iter()
+        .rev()
+        .find(|change| change.path == path || change.from == Some(path.as_str()))
+        .is_some_and(|change| change.path != path);
+    if moved_away {
+        return no_file();
+    }
     let changes = lineage(&path);
     let Some(file) = file_json(&changes) else {
         return no_file();
@@ -1296,12 +1305,6 @@ async fn raw(
         ),
         None => crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path"),
     }
-}
-
-/// The commit of the demo's change to a file at `at`, Stockholm time.
-#[must_use]
-pub fn file_commit_at(at: &str) -> String {
-    file_commit(at)
 }
 
 /// The page at a path now, or the one most recently renamed away from it, as Mneme finds

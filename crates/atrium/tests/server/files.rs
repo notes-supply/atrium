@@ -328,6 +328,14 @@ async fn a_deleted_files_page_keeps_its_history_and_old_downloads() {
     let bytes = atrium.get(&old[0]).await;
     assert_eq!(bytes.status, 200);
     assert_eq!(bytes.header("content-type"), Some("image/png"));
+    assert_eq!(
+        atrium
+            .get("/wiki/files/brand/guidelines-draft.pdf")
+            .await
+            .status,
+        404,
+        "the path a file moved away from"
+    );
 }
 
 #[tokio::test]
