@@ -665,3 +665,40 @@ async fn a_day_busier_than_one_read_goes_on_on_the_next_page_and_loses_nothing()
         "a second that two pages could not hold goes on on a third: {links:?}"
     );
 }
+
+/// Home's opening sentence for a reader last here at `last`, in front of `mneme`.
+async fn sentence_since(mneme: Stub, last: i64) -> String {
+    let atrium = Atrium::start(mneme, &["--viewer", "member"]).await;
+    let now = jiff::Timestamp::now().as_second();
+    let cookie = format!("atrium-visit={last}.{}", now - 60);
+    let home = atrium.get_with("/", &[("cookie", &cookie)]).await;
+    assert_eq!(home.status, 200);
+    texts(&home.body, "p.sentence")[0].clone()
+}
+
+#[tokio::test]
+async fn a_failed_call_for_the_files_never_says_nothing_changed() {
+    // After every change of the examples.
+    let last = 1_788_230_000;
+    let whole = sentence_since(Stub::Fixtures, last).await;
+    assert!(
+        whole.contains("Nothing changed since you were last here"),
+        "{whole}"
+    );
+    let failed = sentence_since(Stub::FileChangesFailing, last).await;
+    assert!(
+        failed.contains("No page changed since you were last here"),
+        "{failed}"
+    );
+    assert!(!failed.contains("Nothing changed"), "{failed}");
+}
+
+#[tokio::test]
+async fn more_files_changed_than_home_reads_are_counted_as_a_lower_bound() {
+    // Before the busy morning, so every change of it is new.
+    let said = sentence_since(Stub::Busy, 1_794_380_000).await;
+    assert!(
+        said.contains(" and 50 or more files changed since"),
+        "{said}"
+    );
+}

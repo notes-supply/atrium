@@ -43,20 +43,43 @@ pub struct Facts {
 #[derive(Debug, Clone, Copy, Default)]
 pub struct ChangeFacts {
     pub pages_since: u64,
-    pub files_since: u64,
+    /// `None` when the files' changes did not answer, so nothing is said of them.
+    pub files_since: Option<FilesSince>,
     pub newest: Option<i64>,
 }
 
-/// `Five pages and one file`, `One file`.
-fn changed(pages: u64, files: u64) -> String {
+/// How many files changed since the last visit, as far as Atrium read back.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct FilesSince {
+    pub count: u64,
+    /// The read stopped before the last visit, so more may have changed.
+    pub at_least: bool,
+}
+
+impl FilesSince {
+    #[must_use]
+    pub const fn exactly(count: u64) -> Self {
+        Self {
+            count,
+            at_least: false,
+        }
+    }
+}
+
+/// `Five pages and one file`, `One file`, `Two pages and 50 or more files`. Files that did
+/// not answer are left out.
+fn changed(pages: u64, files: Option<FilesSince>) -> String {
+    let files = files.filter(|files| files.count > 0).map(|files| {
+        if files.at_least {
+            format!("{} or more files", count(files.count, "", "").trim_end())
+        } else {
+            count(files.count, "file", "files")
+        }
+    });
     match (pages, files) {
-        (pages, 0) => cap(&count(pages, "page", "pages")),
-        (0, files) => cap(&count(files, "file", "files")),
-        (pages, files) => format!(
-            "{} and {}",
-            cap(&count(pages, "page", "pages")),
-            count(files, "file", "files")
-        ),
+        (pages, None) => cap(&count(pages, "page", "pages")),
+        (0, Some(files)) => cap(&files),
+        (pages, Some(files)) => format!("{} and {files}", cap(&count(pages, "page", "pages"))),
     }
 }
 
@@ -78,10 +101,13 @@ fn listed(parts: Vec<Markup>) -> Markup {
 pub fn sentence(local: &Local, facts: &Facts) -> Vec<Markup> {
     let mut said = Vec::new();
     if let Some(changes) = facts.changes {
-        let since = (changes.pages_since, changes.files_since);
-        said.push(match (facts.last, since, changes.newest) {
-            (Some(last), (0, 0), _) => html! { "Nothing changed since you were last here at " (local.time(last, &local.hm(last))) "." },
-            (Some(last), (pages, files), newest) => html! {
+        let files = changes.files_since;
+        let no_files = files.map(|files| files.count == 0);
+        said.push(match (facts.last, (changes.pages_since, no_files), changes.newest) {
+            (Some(last), (0, Some(true)), _) => html! { "Nothing changed since you were last here at " (local.time(last, &local.hm(last))) "." },
+            // The files did not answer, so this says what it knows: the pages.
+            (Some(last), (0, None), _) => html! { "No page changed since you were last here at " (local.time(last, &local.hm(last))) "." },
+            (Some(last), (pages, _), newest) => html! {
                 a href="/wiki/changes#new" { (changed(pages, files)) " changed" }
                 " since you were last here at " (local.time(last, &local.hm(last)))
                 @if let Some(newest) = newest { ", the newest " (local.ago(newest)) }
@@ -317,12 +343,14 @@ async fn changes_since(mneme: &Mneme, since: i64) -> Result<Events, MnemeError> 
 }
 
 /// How many pages changed since the last visit, from the week's events and the newest few,
-/// how many files, from the newest file events, and when the newest change was.
+/// how many files, from the newest file events, and when the newest change was. `files` is
+/// `Ok(None)` from a Mneme that lists no files, where none changed, and an error when the
+/// call failed, where Atrium does not know.
 fn change_facts(
     last: Option<i64>,
     recent: Option<&Events>,
     week: Option<&Events>,
-    files: Option<&FileEvents>,
+    files: Result<Option<&FileEvents>, &MnemeError>,
 ) -> Option<ChangeFacts> {
     let recent = recent?;
     let is_new = |time: i64| last.is_some_and(|last| time > last);
@@ -333,16 +361,25 @@ fn change_facts(
         .filter(|event| is_new(event.time))
         .map(|event| &event.page)
         .collect();
-    let file_events = files.map_or(&[][..], |files| &files.events);
+    let file_events = files.ok().flatten().map_or(&[][..], |files| &files.events);
     let paths: HashSet<&str> = file_events
         .iter()
         .filter(|event| is_new(event.time))
         .map(|event| event.path.as_str())
         .collect();
+    // A read that ends on a change still newer than the last visit, with more after it,
+    // did not reach the visit: more files may have changed than it holds.
+    let short = files.ok().flatten().is_some_and(|files| {
+        u64::try_from(files.events.len()).unwrap_or(u64::MAX) < files.total
+            && files.events.last().is_some_and(|event| is_new(event.time))
+    });
     let newest_file = file_events.first().map(|event| event.time);
     Some(ChangeFacts {
         pages_since: u64::try_from(pages.len()).unwrap_or(0),
-        files_since: u64::try_from(paths.len()).unwrap_or(0),
+        files_since: files.ok().map(|_| FilesSince {
+            count: u64::try_from(paths.len()).unwrap_or(0),
+            at_least: short,
+        }),
         newest: recent
             .events
             .first()
@@ -433,7 +470,7 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
             last,
             recent.as_ref().ok(),
             week_events.as_ref().ok(),
-            files.as_ref().ok().and_then(Option::as_ref),
+            files.as_ref().map(Option::as_ref),
         ),
         machines: copies.as_ref().map(|copies| machine_facts(local, copies)),
         questions: questions
@@ -516,7 +553,7 @@ mod tests {
             last: Some(LAST),
             changes: Some(ChangeFacts {
                 pages_since: 0,
-                files_since: 0,
+                files_since: Some(FilesSince::exactly(0)),
                 newest: Some(LAST - 600),
             }),
             machines: Some(vec![
@@ -537,7 +574,7 @@ mod tests {
             last: Some(LAST),
             changes: Some(ChangeFacts {
                 pages_since: 5,
-                files_since: 0,
+                files_since: Some(FilesSince::exactly(0)),
                 newest: Some(NEWEST),
             }),
             ..Facts::default()
@@ -550,7 +587,7 @@ mod tests {
             last: Some(LAST),
             changes: Some(ChangeFacts {
                 pages_since: 5,
-                files_since: 1,
+                files_since: Some(FilesSince::exactly(1)),
                 newest: Some(NEWEST),
             }),
             ..Facts::default()
@@ -563,7 +600,7 @@ mod tests {
             last: Some(LAST),
             changes: Some(ChangeFacts {
                 pages_since: 0,
-                files_since: 2,
+                files_since: Some(FilesSince::exactly(2)),
                 newest: Some(NEWEST),
             }),
             ..Facts::default()
@@ -572,11 +609,98 @@ mod tests {
     }
 
     #[test]
+    fn files_read_short_of_the_last_visit_are_a_lower_bound() {
+        let facts = Facts {
+            last: Some(LAST),
+            changes: Some(ChangeFacts {
+                pages_since: 2,
+                files_since: Some(FilesSince {
+                    count: 50,
+                    at_least: true,
+                }),
+                newest: Some(NEWEST),
+            }),
+            ..Facts::default()
+        };
+        assert!(
+            said(&facts).starts_with("Two pages and 50 or more files changed since"),
+            "{}",
+            said(&facts)
+        );
+    }
+
+    #[test]
+    fn files_that_did_not_answer_are_never_said_to_be_unchanged() {
+        let facts = |pages| Facts {
+            last: Some(LAST),
+            changes: Some(ChangeFacts {
+                pages_since: pages,
+                files_since: None,
+                newest: Some(NEWEST),
+            }),
+            ..Facts::default()
+        };
+        assert_eq!(
+            said(&facts(0)),
+            "No page changed since you were last here at 07:48."
+        );
+        assert!(said(&facts(3)).starts_with("Three pages changed since"));
+    }
+
+    fn file_events(json: &str) -> FileEvents {
+        serde_json::from_str(json).unwrap()
+    }
+
+    #[test]
+    fn the_files_changed_since_the_last_visit_count_as_far_as_they_were_read() {
+        let recent = Events {
+            total: 0,
+            events: Vec::new(),
+        };
+        let event = |path: &str, time: i64| {
+            format!(
+                r#"{{"commit":"faf510a1fb457f1af5496ca64dea77ed68ddb2f8","path":"{path}","time":{time},"author":"W","kind":"edited","size":1}}"#
+            )
+        };
+        let read = |total: u64, events: &[(&str, i64)]| {
+            let events: Vec<String> = events.iter().map(|(p, t)| event(p, *t)).collect();
+            file_events(&format!(
+                r#"{{"total":{total},"events":[{}]}}"#,
+                events.join(",")
+            ))
+        };
+        let facts = |files: Result<Option<&FileEvents>, &MnemeError>| {
+            change_facts(Some(LAST), Some(&recent), None, files)
+                .unwrap()
+                .files_since
+        };
+        let whole = read(3, &[("a", LAST + 9), ("a", LAST + 5), ("b", LAST - 5)]);
+        assert_eq!(facts(Ok(Some(&whole))), Some(FilesSince::exactly(1)));
+        let short = read(90, &[("a", LAST + 9), ("b", LAST + 5)]);
+        assert_eq!(
+            facts(Ok(Some(&short))),
+            Some(FilesSince {
+                count: 2,
+                at_least: true
+            })
+        );
+        let reached = read(90, &[("a", LAST + 9), ("b", LAST - 5)]);
+        assert_eq!(facts(Ok(Some(&reached))), Some(FilesSince::exactly(1)));
+        assert_eq!(
+            facts(Ok(None)),
+            Some(FilesSince::exactly(0)),
+            "a Mneme without files"
+        );
+        let failed = MnemeError::Away("down".to_owned());
+        assert_eq!(facts(Err(&failed)), None);
+    }
+
+    #[test]
     fn without_a_last_visit_says_when_the_newest_change_was() {
         let facts = Facts {
             changes: Some(ChangeFacts {
                 pages_since: 0,
-                files_since: 0,
+                files_since: Some(FilesSince::exactly(0)),
                 newest: Some(NEWEST),
             }),
             ..Facts::default()

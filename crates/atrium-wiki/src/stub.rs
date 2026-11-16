@@ -31,6 +31,8 @@ pub enum Stub {
     /// Answers as a Mneme from before files did: every route of the examples but the
     /// files', which answer 404 as an unknown route.
     Older,
+    /// Answers as [`Stub::Fixtures`], but every call for the files' changes fails.
+    FileChangesFailing,
     /// Answers with a morning busier than one read of changes, [`BUSY_PAGES`] changes to
     /// pages and [`BUSY_FILES`] to files, several to the second and [`BUSY_BURST`] files in
     /// one second, more than two reads hold, and a few of each the day before.
@@ -462,6 +464,14 @@ pub async fn serve(stub: Stub) -> Running {
         }
         Stub::Failing => Router::new().fallback(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
         Stub::Busy => busy_routes(),
+        Stub::FileChangesFailing => older()
+            .route("/v1/files", get(files))
+            .route("/v1/files/{*path}", get(file))
+            .route("/v1/raw/{*path}", get(raw))
+            .route(
+                "/v1/changes/files",
+                get(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+            ),
         Stub::Older => older().fallback(|| async {
             let body = r#"{"error":"no such route"}"#.to_owned();
             (StatusCode::NOT_FOUND, json(body)).into_response()
