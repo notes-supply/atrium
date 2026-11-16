@@ -281,6 +281,21 @@ async fn file(Path(asked): Path<String>) -> Response {
     if asked == "brand/archive/Kit 2026.zip" {
         return json(include_str!("../fixtures/file.json").to_owned());
     }
+    if asked == UNREADABLE {
+        let commit = "a75f4a67d9148128bb1b4cc2f494d997cef810e7";
+        let file = serde_json::json!({
+            "path": UNREADABLE, "size": 26, "type": "text/plain; charset=utf-8",
+            "created": 1_788_221_400, "updated": 1_788_221_400, "versions": 1,
+            "author": "Writer", "commit": commit, "deleted": null,
+        });
+        let event = serde_json::json!({
+            "commit": commit, "path": UNREADABLE, "time": 1_788_221_400,
+            "author": "Writer", "kind": "created", "size": 26,
+        });
+        return json(
+            serde_json::json!({ "file": file, "total": 1, "events": [event] }).to_string(),
+        );
+    }
     let body = r#"{"error":"no file is at this path, and none was deleted there"}"#.to_owned();
     (StatusCode::NOT_FOUND, json(body)).into_response()
 }
@@ -293,9 +308,12 @@ async fn file_changes(Query(paging): Query<Paging>) -> Response {
     )
 }
 
+/// A text file whose page Mneme answers but whose bytes it cannot send.
+const UNREADABLE: &str = "notes/unreadable.txt";
+
 /// Some bytes for each file of the examples, as long as its listing says, and for the
-/// tests: `slow.bin` comes in pieces 400 ms apart, `busy.bin` is a file the server cannot
-/// send, and `bare.svg` comes without a policy.
+/// tests: `slow.bin` comes in pieces 400 ms apart, `busy.bin` and [`UNREADABLE`] are files
+/// the server cannot send, and `bare.svg` comes without a policy.
 async fn raw(
     method: Method,
     headers: HeaderMap,
@@ -328,7 +346,7 @@ async fn raw(
             )
                 .into_response();
         }
-        "busy.bin" => {
+        "busy.bin" | UNREADABLE => {
             return crate::raw::error(
                 StatusCode::SERVICE_UNAVAILABLE,
                 "the file is stored as a delta",

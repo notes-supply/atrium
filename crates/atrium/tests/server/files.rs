@@ -367,6 +367,23 @@ async fn a_path_a_file_moved_away_from_leads_to_where_it_is() {
 }
 
 #[tokio::test]
+async fn a_text_file_whose_bytes_fail_says_so_and_keeps_its_download() {
+    let atrium = Atrium::member().await;
+    let reply = atrium.get("/wiki/files/notes/unreadable.txt").await;
+    assert_eq!(reply.status, 200);
+    assert_eq!(texts(&reply.body, ".text-preview"), Vec::<String>::new());
+    assert!(
+        texts(&reply.body, ".preview-failed p")[1].starts_with("The text could not be read"),
+        "{:?}",
+        texts(&reply.body, ".preview-failed p")
+    );
+    assert_eq!(
+        attrs(&reply.body, ".file-actions a.download-btn", "href"),
+        ["/wiki/raw/notes/unreadable.txt"]
+    );
+}
+
+#[tokio::test]
 async fn a_text_files_page_shows_its_start() {
     let atrium = Atrium::start(Stub::Demo, &["--viewer", "member"]).await;
     let reply = atrium.get("/wiki/files/brand/palette.txt").await;

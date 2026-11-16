@@ -887,8 +887,9 @@ fn change_words(event: &FileEvent) -> (&'static str, Option<String>) {
     }
 }
 
-/// The preview a browser can show of the file, its bytes from `raw`.
-fn preview(file: &File, raw: &str, text: Option<&(String, bool)>) -> Markup {
+/// The preview a browser can show of the file, its bytes from `raw`; for a text file, its
+/// first part, or why Atrium could not read it.
+fn preview(file: &File, raw: &str, text: Option<&Result<(String, bool), MnemeError>>) -> Markup {
     let name = kind::name(&file.path);
     let size = bytes(file.size);
     html! {
@@ -898,16 +899,18 @@ fn preview(file: &File, raw: &str, text: Option<&(String, bool)>) -> Markup {
             },
             Shown::Audio => div.file-preview.media-preview { audio controls preload="metadata" src=(raw) {} },
             Shown::Video => div.file-preview.media-preview { video controls playsinline preload="metadata" src=(raw) {} },
-            Shown::Text => figure.code.text-preview {
-                figcaption {
-                    @match text {
-                        Some((_, true)) => { "The first " (bytes(TEXT_START as u64)) " of " (size) }
-                        _ => { "The whole text, " (size) }
+            Shown::Text => @match text {
+                Some(Ok((text, more))) => figure.code.text-preview {
+                    figcaption {
+                        @if *more { "The first " (bytes(TEXT_START as u64)) " of " (size) }
+                        @else { "The whole text, " (size) }
                     }
-                }
-                pre tabindex="0" aria-label={ "The text of " (name) } {
-                    code { @if let Some((text, _)) = text { (text) } }
-                }
+                    pre tabindex="0" aria-label={ "The text of " (name) } { code { (text) } }
+                },
+                _ => div.file-preview.open-preview.preview-failed {
+                    p.open-kind { (kind::label(&file.path)) }
+                    p { "The text could not be read from the wiki just now, so there is no preview. Download it, or load the page again." }
+                },
             },
             Shown::Pdf => div.file-preview.open-preview {
                 p.open-kind { "PDF" }
@@ -982,11 +985,12 @@ async fn file_page(
     let file = &detail.file;
     let live = file.deleted.is_none();
     let text = if live && Shown::of(&file.media) == Shown::Text {
-        mneme
-            .raw_start(path, TEXT_START)
-            .await
-            .ok()
-            .map(|(start, more)| (String::from_utf8_lossy(&start).into_owned(), more))
+        Some(
+            mneme
+                .raw_start(path, TEXT_START)
+                .await
+                .map(|(start, more)| (String::from_utf8_lossy(&start).into_owned(), more)),
+        )
     } else {
         None
     };
