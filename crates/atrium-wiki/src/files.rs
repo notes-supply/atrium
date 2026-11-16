@@ -106,13 +106,17 @@ pub async fn raw(
     }
 }
 
-/// Events across all files a move away from a path is looked for among, newest first.
+/// Events across all files Atrium reads back through to find where a file went, newest
+/// first, at most.
 const MOVES_READ: u64 = 2000;
 
-/// Where the file that was at `path` is now, when it moved away from it: the moves that
-/// took it from there, followed to the newest, among the newest [`MOVES_READ`] file events.
-/// `None` when no move took a file from the path among them, or Mneme lists no files.
-async fn moved_to(mneme: &Mneme, path: &str) -> Result<Option<String>, MnemeError> {
+/// The newest file events back to the first that `wanted` picks, read 500 at a time up to
+/// [`MOVES_READ`], with that event's index; `None` when none of them is, or Mneme lists no
+/// files.
+async fn read_back_to(
+    mneme: &Mneme,
+    wanted: impl Fn(&FileEvent) -> bool,
+) -> Result<Option<(Vec<FileEvent>, usize)>, MnemeError> {
     let mut events: Vec<FileEvent> = Vec::new();
     while u64::try_from(events.len()).unwrap_or(u64::MAX) < MOVES_READ {
         let offset = u64::try_from(events.len()).unwrap_or(0);
@@ -121,31 +125,94 @@ async fn moved_to(mneme: &Mneme, path: &str) -> Result<Option<String>, MnemeErro
         };
         let done = read.events.is_empty()
             || offset + u64::try_from(read.events.len()).unwrap_or(0) >= read.total;
+        let start = events.len();
         events.extend(read.events);
+        if let Some(found) = events[start..].iter().position(&wanted) {
+            return Ok(Some((events, start + found)));
+        }
         if done {
             break;
         }
     }
-    Ok(follow(&events, path))
+    Ok(None)
 }
 
-/// Follows the moves in `events`, newest first, from `path` to the last place they took it.
-fn follow(events: &[FileEvent], path: &str) -> Option<String> {
-    let away = |event: &FileEvent, at: &str| {
-        event.kind == EventKind::Renamed && event.from.as_deref() == Some(at)
-    };
-    // The newest move from the path, then each time the oldest move on from where it went
-    // that came after.
-    let mut index = events.iter().position(|event| away(event, path))?;
+/// Where a file is after the events newer than one of its own.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum Trail {
+    /// At this path now.
+    Here(String),
+    /// Deleted at this path, by the event at this index.
+    Deleted(String, usize),
+}
+
+/// Follows the file that `events[index]` left at its path forward through the newer events,
+/// oldest of them first, each event once: each move away from where it is takes it along,
+/// and a deletion there ends it. A history that moves a file in a circle ends where the
+/// file is, never in a loop.
+fn trail(events: &[FileEvent], index: usize) -> Trail {
     let mut place = events[index].path.clone();
-    while let Some(next) = events[..index]
-        .iter()
-        .rposition(|event| away(event, &place))
-    {
-        index = next;
-        place.clone_from(&events[index].path);
+    if events[index].kind == EventKind::Deleted {
+        return Trail::Deleted(place, index);
     }
-    Some(place)
+    for (at, event) in events[..index].iter().enumerate().rev() {
+        match event.kind {
+            EventKind::Renamed if event.from.as_deref() == Some(place.as_str()) => {
+                place.clone_from(&event.path);
+            }
+            EventKind::Deleted if event.path == place => return Trail::Deleted(place, at),
+            _ => {}
+        }
+    }
+    Trail::Here(place)
+}
+
+/// Where the file that was last at `path` is now, when a move took it away and it is still
+/// somewhere else: the newest event that took a file from the path, a move, followed
+/// forward. `None` when that event was a deletion, the file was deleted since, it is back at
+/// `path`, or no such event is among the newest [`MOVES_READ`], so an answer never leads
+/// back to the path asked for.
+async fn moved_to(mneme: &Mneme, path: &str) -> Result<Option<String>, MnemeError> {
+    let away = |event: &FileEvent| match event.kind {
+        EventKind::Renamed => event.from.as_deref() == Some(path),
+        EventKind::Deleted => event.path == path,
+        _ => false,
+    };
+    let Some((events, index)) = read_back_to(mneme, away).await? else {
+        return Ok(None);
+    };
+    if events[index].kind == EventKind::Deleted {
+        return Ok(None);
+    }
+    Ok(match trail(&events, index) {
+        Trail::Here(now) if now != path => Some(now),
+        _ => None,
+    })
+}
+
+/// Which file a change to `path` in `commit` was, and where it is now: the page to show
+/// for a link from that change, which names the file then rather than whichever file has
+/// the path now.
+enum Then {
+    /// The file the change was to is this path's file now, or Atrium cannot tell.
+    Here,
+    /// It is at this path now.
+    Moved(String),
+    /// It was deleted, by this event.
+    Deleted(FileEvent),
+}
+
+async fn then(mneme: &Mneme, path: &str, commit: &CommitId) -> Result<Then, MnemeError> {
+    let Some((events, index)) =
+        read_back_to(mneme, |event| event.commit == *commit && event.path == path).await?
+    else {
+        return Ok(Then::Here);
+    };
+    Ok(match trail(&events, index) {
+        Trail::Here(now) if now == path => Then::Here,
+        Trail::Here(now) => Then::Moved(now),
+        Trail::Deleted(_, by) => Then::Deleted(events[by].clone()),
+    })
 }
 
 /// Mneme's answer for a file as the browser's: its status, the headers in [`PASSED`], and
@@ -864,6 +931,25 @@ pub async fn show(
     if markdown::is_page(&path) {
         return lost::found_by_path(&shell, &mneme, &format!("files/{path}")).await;
     }
+    // A link from an older change names the file by the path it had and the commit: lead
+    // to that file, wherever it is now, not to whichever file has the path now.
+    let at = query
+        .as_ref()
+        .ok()
+        .and_then(|Query(params)| params.at.as_deref())
+        .map(str::parse::<CommitId>);
+    match at {
+        Some(Err(_)) => return respond(&shell, &mneme, Err(Failure::BadQuery)),
+        Some(Ok(commit)) => match then(&mneme, &path, &commit).await {
+            Ok(Then::Here) => {}
+            Ok(Then::Moved(now)) => return redirect(&kind::page_href(&now)),
+            Ok(Then::Deleted(deletion)) => {
+                return deleted_then(&shell, &mneme, &path, &deletion).await;
+            }
+            Err(error) => return respond(&shell, &mneme, Err(error.into())),
+        },
+        None => {}
+    }
     let shown = file_page(&shell, &mneme, &path, query).await;
     if matches!(shown, Err(Failure::Mneme(MnemeError::NotFound))) {
         // A path a file moved away from leads to the file, as a page's old path does.
@@ -872,6 +958,32 @@ pub async fn show(
         }
     }
     respond(&shell, &mneme, shown)
+}
+
+/// The page of a file that a link from an older change names, which was deleted since:
+/// the file's own page when Mneme still answers it at the path it was deleted at, else a
+/// not-found page that says what the record remembers of it.
+async fn deleted_then(shell: &Shell, mneme: &Mneme, asked: &str, deletion: &FileEvent) -> Response {
+    let place = &deletion.path;
+    if let Ok(detail) = mneme.file(place, 0, 1).await
+        && detail.file.deleted.is_some()
+        && detail.file.commit == deletion.commit
+    {
+        if place == asked {
+            let shown = file_page(shell, mneme, place, Ok(Query(Params::default()))).await;
+            return respond(shell, mneme, shown);
+        }
+        return redirect(&kind::page_href(place));
+    }
+    let local = shell.local();
+    let gone = html! {
+        p.diff-sum { "deleted " (local.when_long(deletion.time)) " by " (deletion.author) }
+        p { span.ttl-gone { (kind::name(place)) } ", at " code { (place) } "." }
+    };
+    shell.lost(
+        Some(gone),
+        &[("All files".to_owned(), "/wiki/files".to_owned())],
+    )
 }
 
 /// What an event did, as the history says it.
@@ -1096,32 +1208,61 @@ mod tests {
         ));
     }
 
-    fn moved(time: i64, from: &str, to: &str) -> FileEvent {
+    fn event(time: i64, kind: EventKind, from: Option<&str>, path: &str) -> FileEvent {
         FileEvent {
-            commit: "faf510a1fb457f1af5496ca64dea77ed68ddb2f8".parse().unwrap(),
-            path: to.to_owned(),
+            commit: format!("{time:040x}").parse().unwrap(),
+            path: path.to_owned(),
             time,
             author: "Writer".to_owned(),
-            kind: EventKind::Renamed,
-            from: Some(from.to_owned()),
+            kind,
+            from: from.map(str::to_owned),
             size: 1,
         }
     }
 
+    fn moved(time: i64, from: &str, to: &str) -> FileEvent {
+        event(time, EventKind::Renamed, Some(from), to)
+    }
+
     #[test]
-    fn a_files_moves_are_followed_from_an_old_path_to_the_newest() {
-        // Newest first: a.zip went to b.zip, then b.zip to c.zip. A later file at a.zip
-        // went to x.zip, which is the move from a.zip that counts, being the newest.
+    fn a_file_is_followed_through_its_moves_to_where_it_is() {
+        // Newest first. a.zip went to b.zip, then on to c.zip; a new a.zip came after.
         let events = [
-            moved(4, "a.zip", "x.zip"),
+            event(5, EventKind::Created, None, "a.zip"),
+            moved(4, "b.zip", "c.zip"),
+            moved(3, "a.zip", "b.zip"),
+            event(1, EventKind::Created, None, "a.zip"),
+        ];
+        assert_eq!(trail(&events, 3), Trail::Here("c.zip".to_owned()));
+        assert_eq!(trail(&events, 2), Trail::Here("c.zip".to_owned()));
+        assert_eq!(
+            trail(&events, 0),
+            Trail::Here("a.zip".to_owned()),
+            "the new one"
+        );
+    }
+
+    #[test]
+    fn a_file_moved_in_a_circle_and_deleted_ends_deleted_where_it_was() {
+        let events = [
+            event(4, EventKind::Deleted, None, "a.zip"),
+            moved(3, "b.zip", "a.zip"),
+            moved(2, "a.zip", "b.zip"),
+            event(1, EventKind::Created, None, "a.zip"),
+        ];
+        assert_eq!(trail(&events, 3), Trail::Deleted("a.zip".to_owned(), 0));
+        let circle = [
+            moved(4, "c.zip", "a.zip"),
             moved(3, "b.zip", "c.zip"),
             moved(2, "a.zip", "b.zip"),
-            moved(1, "c.zip", "old.zip"),
+            event(1, EventKind::Created, None, "a.zip"),
         ];
-        assert_eq!(follow(&events, "a.zip").as_deref(), Some("x.zip"));
-        assert_eq!(follow(&events[1..], "a.zip").as_deref(), Some("c.zip"));
-        assert_eq!(follow(&events, "b.zip").as_deref(), Some("c.zip"));
-        assert_eq!(follow(&events, "elsewhere.zip"), None);
+        assert_eq!(
+            trail(&circle, 3),
+            Trail::Here("a.zip".to_owned()),
+            "back at a.zip"
+        );
+        assert_eq!(trail(&circle, 1), Trail::Here("a.zip".to_owned()));
     }
 
     #[test]

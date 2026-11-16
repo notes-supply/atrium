@@ -354,9 +354,15 @@ async fn a_path_a_file_moved_away_from_leads_to_where_it_is() {
     let atrium = Atrium::start(Stub::Demo, &["--viewer", "member"]).await;
     let changes = atrium.get("/wiki/changes?before=1794178800").await;
     let created = attrs(&changes.body, "li[data-file] a.ttl", "href");
-    assert!(
-        created.contains(&"/wiki/files/brand/guidelines-draft.pdf".to_owned()),
-        "an older change links the path the file had then: {created:?}"
+    let draft = created
+        .iter()
+        .find(|href| href.starts_with("/wiki/files/brand/guidelines-draft.pdf?at="))
+        .unwrap_or_else(|| panic!("an older change links the path and the commit: {created:?}"));
+    let followed = atrium.get(draft).await;
+    assert_eq!(followed.status, 303);
+    assert_eq!(
+        followed.header("location"),
+        Some("/wiki/files/brand/print/guidelines.pdf")
     );
     let page = atrium.get("/wiki/files/brand/guidelines-draft.pdf").await;
     assert_eq!(page.status, 303);
@@ -456,8 +462,16 @@ async fn files_come_among_the_changes_and_in_the_palettes_list() {
     assert!(tile[1].starts_with("Wed 08:30kit.zip ZIP"), "{tile:?}");
     assert_eq!(
         attrs(&home.body, ".tile.changes li[data-file] a.ttl", "href"),
-        ["/wiki/files/brand/kit.zip"]
+        [format!(
+            "/wiki/files/brand/kit.zip?at={}",
+            atrium_wiki::demo::file_commit_at("2026-11-11T08:30")
+        )]
     );
+    let kit = atrium
+        .get(&attrs(&home.body, ".tile.changes li[data-file] a.ttl", "href")[0])
+        .await;
+    assert_eq!(kit.status, 200, "the file is where the change left it");
+    assert_eq!(texts(&kit.body, "h1"), ["kit.zip"]);
     let changes = atrium.get("/wiki/changes").await;
     assert_eq!(
         texts(&changes.body, ".days li[data-file] .kind"),
@@ -522,4 +536,66 @@ async fn the_demos_search_finds_the_brand_kit() {
         texts(&reply.body, ".result-list h3"),
         ["Saturday Loaves brand kit"]
     );
+}
+
+fn moves_at(time: i64) -> String {
+    atrium_wiki::stub::moves_commit(time)
+}
+
+#[tokio::test]
+async fn a_file_that_moved_away_and_back_and_was_deleted_is_not_found_not_a_loop() {
+    let atrium = Atrium::start(Stub::Moves, &["--viewer", "member"]).await;
+    // loop.zip went to back.zip, came back to loop.zip, and was deleted there.
+    for path in ["/wiki/raw/loop.zip", "/wiki/raw/back.zip"] {
+        let reply = atrium.get(path).await;
+        assert_eq!(reply.status, 404, "{path}: {:?}", reply.header("location"));
+    }
+    assert_eq!(
+        texts(
+            &atrium.get("/wiki/raw/loop.zip").await.body,
+            ".gone .ttl-gone"
+        ),
+        ["loop.zip"],
+        "the not-found page names the file deleted there"
+    );
+    assert_eq!(atrium.get("/wiki/files/back.zip").await.status, 404);
+    // The changes that moved it lead to the file deleted at loop.zip.
+    let moved = atrium
+        .get(&format!(
+            "/wiki/files/back.zip?at={}",
+            moves_at(1_794_300_002)
+        ))
+        .await;
+    assert_eq!(moved.status, 303);
+    assert_eq!(moved.header("location"), Some("/wiki/files/loop.zip"));
+    let deleted = atrium
+        .get(&format!(
+            "/wiki/files/loop.zip?at={}",
+            moves_at(1_794_300_001)
+        ))
+        .await;
+    assert_eq!(deleted.status, 200);
+    assert!(texts(&deleted.body, ".page-head .sub")[0].starts_with("Deleted "));
+}
+
+#[tokio::test]
+async fn an_old_change_leads_to_its_file_not_the_new_one_at_its_path() {
+    let atrium = Atrium::start(Stub::Moves, &["--viewer", "member"]).await;
+    // kit.zip moved to old/kit.zip, then a new file was created at kit.zip.
+    let changes = atrium.get("/wiki/changes").await;
+    let links = attrs(&changes.body, "li[data-file] a.ttl", "href");
+    let first = format!("/wiki/files/kit.zip?at={}", moves_at(1_794_300_005));
+    let newer = format!("/wiki/files/kit.zip?at={}", moves_at(1_794_300_007));
+    assert!(
+        links.contains(&first) && links.contains(&newer),
+        "{links:?}"
+    );
+    let old = atrium.get(&first).await;
+    assert_eq!(old.status, 303);
+    assert_eq!(old.header("location"), Some("/wiki/files/old/kit.zip"));
+    let new = atrium.get(&newer).await;
+    assert_eq!(new.status, 200, "the new file is at the path");
+    assert_eq!(atrium.get("/wiki/files/kit.zip").await.status, 200);
+    assert_eq!(atrium.get("/wiki/raw/kit.zip").await.body, "kit.zip");
+    assert_eq!(atrium.get("/wiki/files/kit.zip?at=main").await.status, 400);
 }

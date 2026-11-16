@@ -157,6 +157,7 @@ fn write_wiki(work: &Work, now: i64) {
     );
     work.write("brand/kit.zip", &"PK zipped bytes ".repeat(200));
     work.write("notes/todo.txt", "Buy flour.\n");
+    work.write("notes/plan.txt", "Bake on Saturday.\n");
     work.write("brand/guide.md", "# Guide\n\n![The logo](logo.svg)\n");
     work.commit("Start the wiki", start);
     work.write(
@@ -171,6 +172,11 @@ fn write_wiki(work: &Work, now: i64) {
         start + 2 * day,
     );
     work.git(&["rm", "-q", "notes/todo.txt"], start + 2 * day);
+    fs::create_dir_all(work.dir.join("notes/plans")).unwrap();
+    work.git(
+        &["mv", "notes/plan.txt", "notes/plans/plan.txt"],
+        start + 2 * day,
+    );
     work.git(&["mv", "brand/guide.md", "guide.md"], start + 2 * day);
     work.write(
         "index.md",
@@ -182,6 +188,8 @@ fn write_wiki(work: &Work, now: i64) {
         "# Alpha\n\nThe first page talks about boats and quiet harbours.\n\nNow with a second line.\n\n\
          <script>alert(1)</script>\n\nA [Do not click](javascript:alert(1)) link.\n",
     );
+    // A new file takes the path the kit moved away from.
+    work.write("brand/kit.zip", "A new kit.\n");
     work.commit("Try a script", now - 3600);
 }
 
@@ -485,6 +493,60 @@ async fn moved_page_version(atrium: &Atrium, logo: &str) {
     );
 }
 
+/// A path a file moved away from, and one a new file took since.
+async fn moved_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
+    // A path a file moved away from, which no file has taken since, leads to the file.
+    let old = atrium.get("/wiki/files/notes/plan.txt").await;
+    assert_eq!(old.status, 303);
+    assert_eq!(
+        old.header("location"),
+        Some("/wiki/files/notes/plans/plan.txt")
+    );
+    let old_bytes = atrium.get("/wiki/raw/notes/plan.txt").await;
+    assert_eq!(
+        old_bytes.header("location"),
+        Some("/wiki/raw/notes/plans/plan.txt")
+    );
+
+    // The kit's old path holds a new file now. Each change to a file at that path leads to
+    // the file it was: the first to the kit where it moved, the newest to the new file.
+    let new_kit = atrium.get("/wiki/files/brand/kit.zip").await;
+    assert_eq!(new_kit.status, 200);
+    assert_eq!(rows(&new_kit.body, ".file-events tbody tr").len(), 1);
+    assert_eq!(
+        atrium.get("/wiki/raw/brand/kit.zip").await.body,
+        "A new kit.\n"
+    );
+    let changes = atrium.get("/wiki/changes").await;
+    let at_kit: Vec<String> = attrs(&changes.body, "li[data-file] a.ttl", "href")
+        .into_iter()
+        .filter(|href| href.starts_with("/wiki/files/brand/kit.zip?at="))
+        .collect();
+    assert_eq!(at_kit.len(), 2, "{at_kit:?}");
+    let (newest, first) = (atrium.get(&at_kit[0]).await, atrium.get(&at_kit[1]).await);
+    say(
+        "GET the two changes at brand/kit.zip",
+        vec![
+            format!(
+                "{} {}",
+                newest.status,
+                newest.header("location").unwrap_or_default()
+            ),
+            format!(
+                "{} {}",
+                first.status,
+                first.header("location").unwrap_or_default()
+            ),
+        ],
+    );
+    assert_eq!(newest.status, 200, "the new file");
+    assert_eq!(first.status, 303);
+    assert_eq!(
+        first.header("location"),
+        Some("/wiki/files/brand/archive/kit.zip")
+    );
+}
+
 async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
     let logo = "/wiki/raw/brand/logo.svg";
     for headers in [&[][..], &[("range", "bytes=5-14")][..]] {
@@ -542,7 +604,7 @@ async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
 
     let list = atrium.get("/wiki/files").await;
     say("GET /wiki/files", texts(&list.body, "tbody tr"));
-    assert_eq!(texts(&list.body, "tbody a.ttl"), ["brand/"]);
+    assert_eq!(texts(&list.body, "tbody a.ttl"), ["brand/", "notes/"]);
     let kit = atrium.get("/wiki/files/brand/archive/kit.zip").await;
     let events = rows(&kit.body, ".file-events tbody tr");
     say(
@@ -560,18 +622,7 @@ async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
 
     moved_page_version(atrium, logo).await;
 
-    // The kit's first change links the path it had then, which leads to where it is now.
-    let old = atrium.get("/wiki/files/brand/kit.zip").await;
-    assert_eq!(old.status, 303);
-    assert_eq!(
-        old.header("location"),
-        Some("/wiki/files/brand/archive/kit.zip")
-    );
-    let old_bytes = atrium.get("/wiki/raw/brand/kit.zip").await;
-    assert_eq!(
-        old_bytes.header("location"),
-        Some("/wiki/raw/brand/archive/kit.zip")
-    );
+    moved_files(atrium, say).await;
 
     let gone = atrium.get("/wiki/raw/notes/todo.txt").await;
     assert_eq!(gone.status, 404);

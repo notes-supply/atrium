@@ -31,6 +31,10 @@ pub enum Stub {
     /// Answers as a Mneme from before files did: every route of the examples but the
     /// files', which answer 404 as an unknown route.
     Older,
+    /// Answers with files that moved: [`MOVES`] in order, where a file left `loop.zip` and
+    /// came back before it was deleted, and `kit.zip` moved to `old/kit.zip` before a new
+    /// file took its path.
+    Moves,
     /// Answers as [`Stub::Fixtures`], but every call for the files' changes fails.
     FileChangesFailing,
     /// Answers with a morning busier than one read of changes, [`BUSY_PAGES`] changes to
@@ -124,6 +128,90 @@ async fn busy_file_changes(Query(window): Query<Window>) -> Response {
             "size": 10,
         })
     })
+}
+
+/// [`Stub::Moves`]'s file events, oldest first: time, kind, path, the path it moved from.
+pub const MOVES: [(i64, &str, &str, Option<&str>); 7] = [
+    (1_794_300_001, "created", "loop.zip", None),
+    (1_794_300_002, "renamed", "back.zip", Some("loop.zip")),
+    (1_794_300_003, "renamed", "loop.zip", Some("back.zip")),
+    (1_794_300_004, "deleted", "loop.zip", None),
+    (1_794_300_005, "created", "kit.zip", None),
+    (1_794_300_006, "renamed", "old/kit.zip", Some("kit.zip")),
+    (1_794_300_007, "created", "kit.zip", None),
+];
+
+/// The commit of [`MOVES`]'s event at `time`.
+#[must_use]
+pub fn moves_commit(time: i64) -> String {
+    format!("{time:040x}")
+}
+
+fn moves_event(time: i64, kind: &str, path: &str, from: Option<&str>) -> Value {
+    serde_json::json!({
+        "commit": moves_commit(time), "path": path, "time": time, "author": "Writer",
+        "kind": kind, "from": from, "size": if kind == "deleted" { 0 } else { 4 },
+    })
+}
+
+async fn moves_changes(Query(window): Query<Window>) -> Response {
+    let times = MOVES
+        .iter()
+        .rev()
+        .enumerate()
+        .map(|(i, (time, ..))| (i, *time));
+    busy(&window, times, |i, _| {
+        let (time, kind, path, from) = MOVES[MOVES.len() - 1 - i];
+        moves_event(time, kind, path, from)
+    })
+}
+
+/// The file at a path now, or the one deleted there last, as Mneme answers: its newest
+/// event, which is all these tests read.
+async fn moves_file(Path(asked): Path<String>) -> Response {
+    let newest = MOVES
+        .iter()
+        .rev()
+        .find(|(_, _, path, from)| *path == asked || *from == Some(asked.as_str()));
+    let Some((time, kind, path, _)) = newest.filter(|(_, _, path, _)| *path == asked) else {
+        let body = r#"{"error":"no file is at this path, and none was deleted there"}"#;
+        return (StatusCode::NOT_FOUND, json(body.to_owned())).into_response();
+    };
+    let deleted = (*kind == "deleted").then_some(*time);
+    let file = serde_json::json!({
+        "path": path, "size": 4, "type": "application/octet-stream", "created": time,
+        "updated": time, "versions": 1, "author": "Writer", "commit": moves_commit(*time),
+        "deleted": deleted,
+    });
+    let events = [moves_event(*time, kind, path, None)];
+    json(serde_json::json!({ "file": file, "total": 1, "events": events }).to_string())
+}
+
+async fn moves_raw(method: Method, headers: HeaderMap, Path(path): Path<String>) -> Response {
+    if ["kit.zip", "old/kit.zip"].contains(&path.as_str()) {
+        let bytes = axum::body::Bytes::from(path.clone().into_bytes());
+        return crate::raw::answer(&method, &headers, &path, bytes, false);
+    }
+    crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path")
+}
+
+fn moves_routes() -> Router {
+    Router::new()
+        .route(
+            "/v1/changes",
+            get(|| async { json(r#"{"total":0,"events":[]}"#.to_owned()) }),
+        )
+        .route(
+            "/v1/pages",
+            get(|| async { json(r#"{"total":0,"pages":[]}"#.to_owned()) }),
+        )
+        .route(
+            "/v1/status",
+            get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
+        )
+        .route("/v1/changes/files", get(moves_changes))
+        .route("/v1/files/{*path}", get(moves_file))
+        .route("/v1/raw/{*path}", get(moves_raw))
 }
 
 fn busy_routes() -> Router {
@@ -464,6 +552,7 @@ pub async fn serve(stub: Stub) -> Running {
         }
         Stub::Failing => Router::new().fallback(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
         Stub::Busy => busy_routes(),
+        Stub::Moves => moves_routes(),
         Stub::FileChangesFailing => older()
             .route("/v1/files", get(files))
             .route("/v1/files/{*path}", get(file))

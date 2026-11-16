@@ -1331,6 +1331,13 @@ pub fn address(key: &str) -> String {
     page_id(key)
 }
 
+/// The commit of the demo's changes to files at `at`, Stockholm time, such as
+/// `2026-11-11T08:30`.
+#[must_use]
+pub fn file_commit_at(at: &str) -> String {
+    file_commit(at)
+}
+
 /// The commit of version `version` of the page `key`.
 #[must_use]
 pub fn commit_of(key: &str, version: u64) -> String {

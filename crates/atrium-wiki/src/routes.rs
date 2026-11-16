@@ -131,6 +131,8 @@ pub struct Params {
     /// of changes already showed.
     pub pages: Option<String>,
     pub files: Option<String>,
+    /// The commit of a change a link to a file came from.
+    pub at: Option<String>,
 }
 
 pub fn params(query: Result<Query<Params>, QueryRejection>) -> Result<Params, Failure> {
@@ -432,7 +434,7 @@ pub fn file_row(local: &Local, last: Option<i64>, event: &FileEvent, look: RowLo
                 @if event.kind == EventKind::Deleted {
                     span.ttl.ttl-gone { (name) }
                 } @else {
-                    a.ttl href=(crate::kind::page_href(&event.path)) data-row data-carry { (name) }
+                    a.ttl href=(href(&crate::kind::page_href(&event.path), &[("at", event.commit.as_str())])) data-row data-carry { (name) }
                 }
                 " " span.file-mark { (crate::kind::label(&event.path)) }
                 span.kind { (kind) }
