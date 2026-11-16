@@ -11,7 +11,7 @@ use axum::extract::{Query, State};
 use axum::response::Response;
 use maud::{Markup, html};
 
-use crate::mneme::{Event, Events, Mneme, MnemeError};
+use crate::mneme::{Event, Events, FileEvent, FileEvents, Mneme, MnemeError};
 use crate::routes::{
     Change, Failure, Params, RowLook, any_row, choice, href, losers, merged, params, respond,
     titles,
@@ -103,6 +103,70 @@ async fn older(
     Ok((mneme.changes(offset, READ, None).await?, false))
 }
 
+/// Changes to pages and files in one list, newest first, and whether a read was cut short.
+/// A read cut short may lack the other list's changes older than its oldest, so those are
+/// left for the next page.
+fn whole<'a>(pages: &'a [Event], files: &'a [FileEvent]) -> (Vec<Change<'a>>, bool) {
+    let read = |n: usize| u64::try_from(n).unwrap_or(0) == READ;
+    let (pages_full, files_full) = (read(pages.len()), read(files.len()));
+    let floor = [
+        pages.last().filter(|_| pages_full).map(|event| event.time),
+        files.last().filter(|_| files_full).map(|event| event.time),
+    ]
+    .into_iter()
+    .flatten()
+    .max();
+    let all = merged(pages, files)
+        .into_iter()
+        .filter(|change| floor.is_none_or(|floor| change.time() >= floor))
+        .collect();
+    (all, pages_full || files_full)
+}
+
+/// The link to the days before those shown, when there are any: from the start of the
+/// oldest day shown, and past the pages' events shown for a Mneme that pages by offset.
+fn older_link(
+    shell: &Shell,
+    shown: &[&Change<'_>],
+    pages: &Events,
+    files: Option<&FileEvents>,
+    offset: u64,
+    by_time: bool,
+) -> Option<String> {
+    let shown_pages = u64::try_from(
+        shown
+            .iter()
+            .filter(|change| matches!(change, Change::Page(_)))
+            .count(),
+    )
+    .unwrap_or(0);
+    let shown_files = u64::try_from(shown.len()).unwrap_or(0) - shown_pages;
+    let skipped = if by_time { 0 } else { offset };
+    // The older days start before the oldest day shown, which is whole: `days` leaves out a
+    // day the read may have cut.
+    let oldest_day = shown.last().and_then(|change| {
+        shell
+            .local()
+            .at(change.time())
+            .start_of_day()
+            .ok()
+            .map(|start| start.timestamp().as_second())
+    });
+    let more_files = files.is_some_and(|files| shown_files < files.total);
+    (skipped + shown_pages < pages.total || more_files).then(|| {
+        href(
+            "/wiki/changes",
+            &[
+                (
+                    "before",
+                    &oldest_day.map_or_else(String::new, |at| at.to_string()),
+                ),
+                ("offset", &(offset + shown_pages).to_string()),
+            ],
+        )
+    })
+}
+
 async fn changes(
     shell: &Shell,
     mneme: &Mneme,
@@ -118,58 +182,15 @@ async fn changes(
         mneme.file_changes(0, READ, None, before),
     )?;
     let file_events = files.as_ref().map_or(&[][..], |files| &files.events[..]);
-    let read = |n: usize| u64::try_from(n).unwrap_or(0) == READ;
-    let (pages_full, files_full) = (read(found.events.len()), read(file_events.len()));
-    // A read cut short may lack the other list's changes older than its oldest.
-    let floor = [
-        found.events.last().filter(|_| pages_full).map(|event| event.time),
-        file_events.last().filter(|_| files_full).map(|event| event.time),
-    ]
-    .into_iter()
-    .flatten()
-    .max();
-    let all: Vec<Change<'_>> = merged(&found.events, file_events)
-        .into_iter()
-        .filter(|change| floor.is_none_or(|floor| change.time() >= floor))
-        .collect();
-    let days = days(shell, &all, pages_full || files_full);
+    let (all, full) = whole(&found.events, file_events);
+    let days = days(shell, &all, full);
     let shown: Vec<&Change<'_>> = days.iter().flat_map(|day| day.iter()).collect();
     let losers = losers(mneme, &found.events).await;
     let local = shell.local();
     let last = shell.visit().last;
     let is_new = |change: &Change<'_>| last.is_some_and(|last| change.time() > last);
     let new = shown.iter().filter(|change| is_new(change)).count();
-    let shown_pages = u64::try_from(
-        shown
-            .iter()
-            .filter(|change| matches!(change, Change::Page(_)))
-            .count(),
-    )
-    .unwrap_or(0);
-    let shown_files = u64::try_from(shown.len()).unwrap_or(0) - shown_pages;
-    let skipped = if by_time { 0 } else { offset };
-    // The older days start before the oldest day shown, which is whole: `days` leaves out a
-    // day the read may have cut.
-    let oldest_day = shown.last().and_then(|change| {
-        local
-            .at(change.time())
-            .start_of_day()
-            .ok()
-            .map(|start| start.timestamp().as_second())
-    });
-    let more_files = files.as_ref().is_some_and(|files| shown_files < files.total);
-    let older = (skipped + shown_pages < found.total || more_files).then(|| {
-        href(
-            "/wiki/changes",
-            &[
-                (
-                    "before",
-                    &oldest_day.map_or_else(String::new, |at| at.to_string()),
-                ),
-                ("offset", &(offset + shown_pages).to_string()),
-            ],
-        )
-    });
+    let older = older_link(shell, &shown, &found, files.as_ref(), offset, by_time);
     let newer = (offset > 0).then(|| "/wiki/changes".to_owned());
     let look = RowLook {
         day: false,

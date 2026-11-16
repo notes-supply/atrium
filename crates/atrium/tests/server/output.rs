@@ -39,7 +39,10 @@ async fn crawl(atrium: &Atrium) -> BTreeMap<String, u16> {
     let mut queue = VecDeque::from(["/".to_owned()]);
     while let Some(path) = queue.pop_front() {
         // Assets and a file's bytes are not pages; their own tests check their headers.
-        if found.contains_key(&path) || path.starts_with("/assets/") || path.starts_with("/wiki/raw/") {
+        if found.contains_key(&path)
+            || path.starts_with("/assets/")
+            || path.starts_with("/wiki/raw/")
+        {
             continue;
         }
         assert!(found.len() < 500, "the crawl does not end");

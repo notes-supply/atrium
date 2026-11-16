@@ -728,7 +728,9 @@ mod tests {
         .html
         .into_string();
         assert!(
-            old.contains(r#"src="/wiki/raw/brand/logo.svg?at=faf510a1fb457f1af5496ca64dea77ed68ddb2f8""#),
+            old.contains(
+                r#"src="/wiki/raw/brand/logo.svg?at=faf510a1fb457f1af5496ca64dea77ed68ddb2f8""#
+            ),
             "an old version shows its images as they were: {old}"
         );
     }
@@ -746,12 +748,24 @@ mod tests {
             "{out}"
         );
         assert!(
-            out.contains(r#"<a href="http://example.com/d.png">http://example.com/d.png (image)</a>"#),
+            out.contains(
+                r#"<a href="http://example.com/d.png">http://example.com/d.png (image)</a>"#
+            ),
             "{out}"
         );
-        assert!(out.contains(r#"<a href="//example.com/e.png">e (image)</a>"#), "{out}");
-        let dropped = served("![pixel](data:image/png;base64,AAAA) ![x](javascript:x)", "a.md", None);
-        assert!(!dropped.contains("<img") && !dropped.contains("<a"), "{dropped}");
+        assert!(
+            out.contains(r#"<a href="//example.com/e.png">e (image)</a>"#),
+            "{out}"
+        );
+        let dropped = served(
+            "![pixel](data:image/png;base64,AAAA) ![x](javascript:x)",
+            "a.md",
+            None,
+        );
+        assert!(
+            !dropped.contains("<img") && !dropped.contains("<a"),
+            "{dropped}"
+        );
         assert!(dropped.contains("pixel"), "{dropped}");
     }
 
@@ -777,8 +791,14 @@ mod tests {
             out.contains(r#"<a href="/wiki/raw/brand/old.pdf">gone</a>"#),
             "a file the whole listing lacks is a plain link: {out}"
         );
-        assert!(out.contains(r#"data-preview="/wiki/brand/other.md""#), "{out}");
-        assert!(out.contains(r#"<a href="/wiki/changes" data-preview="/wiki/changes">home</a>"#), "a link from the top stays as written: {out}");
+        assert!(
+            out.contains(r#"data-preview="/wiki/brand/other.md""#),
+            "{out}"
+        );
+        assert!(
+            out.contains(r#"<a href="/wiki/changes" data-preview="/wiki/changes">home</a>"#),
+            "a link from the top stays as written: {out}"
+        );
         let partial = Known::default();
         let unknown = served("[x](old.pdf)", "a.md", Some(&partial));
         assert!(unknown.contains("PDF</span></a>"), "{unknown}");

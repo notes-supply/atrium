@@ -454,7 +454,9 @@ pub fn any_row(
     look: RowLook,
 ) -> Markup {
     match change {
-        Change::Page(event) => change_row(local, last, event, title_of(titles, event), losers, look),
+        Change::Page(event) => {
+            change_row(local, last, event, title_of(titles, event), losers, look)
+        }
         Change::File(event) => file_row(local, last, event, look),
     }
 }

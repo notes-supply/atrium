@@ -12,8 +12,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 use crate::mneme::{FileListing, FileSort, Filters, Listing, Mneme, MnemeError, Sort};
-use crate::{kind, markdown};
 use crate::routes::{bare, page_href};
+use crate::{kind, markdown};
 
 /// Pages, and files, the palette lists, at most.
 const MOST: u64 = 2000;

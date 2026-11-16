@@ -359,10 +359,10 @@ async fn older_changes_are_the_days_before_the_time_the_address_names() {
             "2026-11-08T21:14:00+01:00",
             "2026-11-07T20:41:00+01:00",
             "2026-10-05T11:00:00+02:00",
-            "2026-10-02T14:12:00+02:00",
+            "2026-10-02T14:15:00+02:00",
             "2026-09-20T21:40:00+02:00"
         ],
-        "the pages' days, and then the files'"
+        "the pages' days, and the files'"
     );
     assert_eq!(
         texts(&reply, "li[data-file] .kind"),

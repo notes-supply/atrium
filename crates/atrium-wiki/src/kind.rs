@@ -117,7 +117,10 @@ mod tests {
             "/wiki/files/brand/a%23b%3F.zip"
         );
         assert_eq!(raw_href("a.svg", Some("abc")), "/wiki/raw/a.svg?at=abc");
-        assert_eq!(folder_href("brand/print"), "/wiki/files?under=brand%2Fprint");
+        assert_eq!(
+            folder_href("brand/print"),
+            "/wiki/files?under=brand%2Fprint"
+        );
         assert_eq!(folder_href(""), "/wiki/files");
     }
 }

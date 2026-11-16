@@ -44,8 +44,7 @@ pub fn media(path: &str) -> (&'static str, bool) {
         .rsplit('/')
         .next()
         .and_then(|name| name.rsplit_once('.'))
-        .map(|(_, extension)| extension.to_ascii_lowercase())
-        .unwrap_or_default();
+        .map_or_else(String::new, |(_, extension)| extension.to_ascii_lowercase());
     let media = match extension.as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",

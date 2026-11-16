@@ -210,8 +210,14 @@ async fn raw(
                 [
                     (header::CONTENT_TYPE, "application/octet-stream"),
                     (header::CONTENT_LENGTH, "5120"),
-                    (header::CONTENT_DISPOSITION, "attachment; filename=\"slow.bin\""),
-                    (header::CONTENT_SECURITY_POLICY, "default-src 'none'; style-src 'unsafe-inline'; sandbox"),
+                    (
+                        header::CONTENT_DISPOSITION,
+                        "attachment; filename=\"slow.bin\"",
+                    ),
+                    (
+                        header::CONTENT_SECURITY_POLICY,
+                        "default-src 'none'; style-src 'unsafe-inline'; sandbox",
+                    ),
                 ],
                 axum::body::Body::from_stream(pieces),
             )
@@ -236,7 +242,9 @@ async fn raw(
     let Some(size) = size.or_else(|| (path == "bare.svg").then_some(40)) else {
         return crate::raw::error(StatusCode::NOT_FOUND, "nothing is at this path");
     };
-    let bytes: Vec<u8> = (0..size).map(|i| b"0123456789abcdef"[(i % 16) as usize]).collect();
+    let bytes: Vec<u8> = (0..size)
+        .map(|i| b"0123456789abcdef"[(i % 16) as usize])
+        .collect();
     let mut answer = crate::raw::answer(
         &method,
         &headers,

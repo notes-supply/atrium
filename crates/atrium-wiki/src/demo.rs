@@ -505,9 +505,7 @@ fn page_of(key: &str) -> Option<&'static PageData> {
 
 /// Every page the demo has a text for, the deleted one too.
 fn all_pages() -> impl Iterator<Item = &'static PageData> {
-    PAGES
-        .iter()
-        .chain([&BRAND, &GONE])
+    PAGES.iter().chain([&BRAND, &GONE])
 }
 
 fn page_id(key: &str) -> String {
@@ -1013,20 +1011,86 @@ const RACK: &[u8] = include_bytes!("../demo/rack.svg");
 /// Every change to the demo's files, oldest first: versions, a move and a deletion.
 fn file_changes_oldest_first() -> Vec<FileChange> {
     vec![
-        file_change("2026-06-20T09:00", "brand/old-mark.png", "created", "rowan", OLD_MARK),
-        file_change("2026-09-20T21:40", "homelab/laurel-rack.svg", "created", "ironbark", RACK),
-        file_change("2026-10-02T14:10", "brand/logo.svg", "created", "rowan", LOGO_V1),
-        file_change("2026-10-02T14:10", "brand/mark.png", "created", "rowan", MARK),
-        file_change("2026-10-02T14:12", "brand/kit.zip", "created", "rowan", KIT_V1),
-        file_change("2026-10-02T14:12", "brand/palette.txt", "created", "rowan", PALETTE),
-        file_change("2026-10-05T11:00", "brand/guidelines-draft.pdf", "created", "rowan", GUIDELINES),
-        file_change("2026-11-08T11:05", "brand/old-mark.png", "deleted", "rowan", &[]),
+        file_change(
+            "2026-06-20T09:00",
+            "brand/old-mark.png",
+            "created",
+            "rowan",
+            OLD_MARK,
+        ),
+        file_change(
+            "2026-09-20T21:40",
+            "homelab/laurel-rack.svg",
+            "created",
+            "ironbark",
+            RACK,
+        ),
+        file_change(
+            "2026-10-02T14:10",
+            "brand/logo.svg",
+            "created",
+            "rowan",
+            LOGO_V1,
+        ),
+        file_change(
+            "2026-10-02T14:10",
+            "brand/mark.png",
+            "created",
+            "rowan",
+            MARK,
+        ),
+        file_change(
+            "2026-10-02T14:12",
+            "brand/kit.zip",
+            "created",
+            "rowan",
+            KIT_V1,
+        ),
+        file_change(
+            "2026-10-02T14:12",
+            "brand/palette.txt",
+            "created",
+            "rowan",
+            PALETTE,
+        ),
+        file_change(
+            "2026-10-05T11:00",
+            "brand/guidelines-draft.pdf",
+            "created",
+            "rowan",
+            GUIDELINES,
+        ),
+        file_change(
+            "2026-11-08T11:05",
+            "brand/old-mark.png",
+            "deleted",
+            "rowan",
+            &[],
+        ),
         FileChange {
             from: Some("brand/guidelines-draft.pdf"),
-            ..file_change("2026-11-09T10:15", "brand/print/guidelines.pdf", "renamed", "rowan", GUIDELINES)
+            ..file_change(
+                "2026-11-09T10:15",
+                "brand/print/guidelines.pdf",
+                "renamed",
+                "rowan",
+                GUIDELINES,
+            )
         },
-        file_change("2026-11-10T16:20", "brand/logo.svg", "edited", "willow", LOGO),
-        file_change("2026-11-11T08:30", "brand/kit.zip", "edited", "ironbark", KIT),
+        file_change(
+            "2026-11-10T16:20",
+            "brand/logo.svg",
+            "edited",
+            "willow",
+            LOGO,
+        ),
+        file_change(
+            "2026-11-11T08:30",
+            "brand/kit.zip",
+            "edited",
+            "ironbark",
+            KIT,
+        ),
     ]
 }
 
@@ -1055,7 +1119,7 @@ fn lineage(path: &str) -> Vec<FileChange> {
     for change in file_changes_oldest_first().into_iter().rev() {
         if change.path == wanted {
             if let Some(from) = change.from {
-                wanted = from.to_owned();
+                from.clone_into(&mut wanted);
             }
             found.push(change);
         }
@@ -1216,11 +1280,12 @@ async fn raw(
             .iter()
             .any(|change| file_commit(change.at) == asked)
     });
-    let found = commit_known
-        .then(|| tree_at(params.at.as_deref()))
-        .unwrap_or_default()
-        .into_iter()
-        .find(|(held, _)| *held == path);
+    let tree = if commit_known {
+        tree_at(params.at.as_deref())
+    } else {
+        Vec::new()
+    };
+    let found = tree.into_iter().find(|(held, _)| *held == path);
     match found {
         Some((_, bytes)) => crate::raw::answer(
             &method,

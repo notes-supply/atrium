@@ -343,7 +343,11 @@ fn change_facts(
     Some(ChangeFacts {
         pages_since: u64::try_from(pages.len()).unwrap_or(0),
         files_since: u64::try_from(paths.len()).unwrap_or(0),
-        newest: recent.events.first().map(|event| event.time).max(newest_file),
+        newest: recent
+            .events
+            .first()
+            .map(|event| event.time)
+            .max(newest_file),
     })
 }
 
@@ -359,6 +363,21 @@ fn machine_facts(local: &Local, copies: &[Copy]) -> Vec<(String, Want, String)> 
             (copy.name.clone(), copy.want(), says)
         })
         .collect()
+}
+
+/// The recent changes tile: the newest changes to pages and files together.
+fn recent_tile(
+    local: &Local,
+    last: Option<i64>,
+    recent: &Events,
+    files: Option<&FileEvents>,
+    titles: &HashMap<PageId, String>,
+    losers: &HashMap<String, Loser>,
+) -> Markup {
+    let file_events = files.map_or(&[][..], |files| &files.events[..]);
+    let mut rows = merged(&recent.events, file_events);
+    rows.truncate(TILE_CHANGES);
+    changes_tile(local, last, &rows, titles, losers)
 }
 
 pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
@@ -433,22 +452,15 @@ pub async fn offer(mneme: &Mneme, context: &HomeContext) -> HomeOffer {
     };
     let figure = map_figure(local, &known, "The wiki", mneme.record());
     let no_titles = HashMap::new();
-    let file_events = match &files {
-        Ok(Some(files)) => &files.events[..],
-        _ => &[],
-    };
     let mut shown = vec![match &recent {
-        Ok(recent) => {
-            let mut rows = merged(&recent.events, file_events);
-            rows.truncate(TILE_CHANGES);
-            changes_tile(
-                local,
-                last,
-                &rows,
-                titles.as_ref().unwrap_or(&no_titles),
-                &losers,
-            )
-        }
+        Ok(recent) => recent_tile(
+            local,
+            last,
+            recent,
+            files.as_ref().ok().and_then(Option::as_ref),
+            titles.as_ref().unwrap_or(&no_titles),
+            &losers,
+        ),
         Err(_) => away_tile("changes", "Recent changes"),
     }];
     match &questions {

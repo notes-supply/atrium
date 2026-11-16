@@ -274,7 +274,10 @@ const fn orders(sort: FileSort) -> [(Order, &'static str); 2] {
     match sort {
         FileSort::Path => [(Order::Asc, "A to Z"), (Order::Desc, "Z to A")],
         FileSort::Updated => [(Order::Desc, "Newest first"), (Order::Asc, "Oldest first")],
-        FileSort::Size => [(Order::Desc, "Largest first"), (Order::Asc, "Smallest first")],
+        FileSort::Size => [
+            (Order::Desc, "Largest first"),
+            (Order::Asc, "Smallest first"),
+        ],
     }
 }
 
@@ -540,8 +543,7 @@ fn row(shell: &Shell, row: &Row<'_>, under: &str, filtered: bool) -> Markup {
             let place = kind::folder(&file.path);
             let shown_folder = place
                 .strip_prefix(under)
-                .map(|rest| rest.trim_start_matches('/'))
-                .unwrap_or(place);
+                .map_or(place, |rest| rest.trim_start_matches('/'));
             html! {
                 tr {
                     (kind_cell(Some(&file.path)))
@@ -606,6 +608,90 @@ fn no_files_yet() -> Page {
     )
 }
 
+/// What the list reads: the files it shows, how many pages and files the wiki has.
+async fn read(
+    mneme: &Mneme,
+    asked: &Asked,
+    offset: u64,
+) -> Result<(Option<(Vec<File>, u64)>, u64, Option<u64>), MnemeError> {
+    let pages = async { mneme.status().await.map(|status| status.pages) };
+    let all = async { Ok(file_count(mneme).await) };
+    if asked.words.is_empty() {
+        tokio::try_join!(all_under(mneme, &asked.under), pages, all)
+    } else {
+        let listing = FileListing {
+            under: Some(&asked.under),
+            words: Some(&asked.words),
+            sort: Some(asked.sort),
+            order: Some(asked.order),
+            offset,
+            limit: PAGE_SIZE,
+        };
+        let (found, pages, all) = tokio::try_join!(mneme.files(listing), pages, all)?;
+        Ok((found.map(|found| (found.files, found.total)), pages, all))
+    }
+}
+
+/// The list's heading: the folder, or all files with a line on what they are.
+fn list_head(asked: &Asked, total: u64, pages: u64, files: u64) -> Markup {
+    html! {
+        header.page-head {
+            @if asked.under.is_empty() {
+                h1 { "Files" }
+                p.sub {
+                    "Images, PDFs, archives and every other file kept beside the pages. "
+                    (cap_count(files)) " on the record."
+                }
+            } @else {
+                (crumbs(&asked.under, false))
+                h1 { (kind::name(&asked.under)) }
+                p.sub { (cap_count(total)) " in this folder and the folders inside it." }
+            }
+            (switch(true, pages, files))
+        }
+    }
+}
+
+/// The filter by name, a plain form that keeps the folder.
+fn filter_form(asked: &Asked, where_words: &str) -> Markup {
+    html! {
+        form.file-find action="/wiki/files" method="get" role="search" aria-label="Filter files by name" {
+            label.vh for="file-q" { "Filter the files" (where_words) " by name" }
+            @if !asked.under.is_empty() { input type="hidden" name="under" value=(asked.under); }
+            input #file-q .num-in name="q" type="search" value=(asked.words) autocomplete="off" spellcheck="false"
+                placeholder={ "Filter by name" (where_words) };
+            button.btn type="submit" { "Filter" }
+            @if !asked.words.is_empty() { a.seg href=(kind::folder_href(&asked.under)) { "Clear" } }
+        }
+    }
+}
+
+/// The rows shown, or a line saying there are none.
+fn table(shell: &Shell, asked: &Asked, shown: &[&Row<'_>], where_words: &str) -> Markup {
+    let order_words = orders(asked.sort)
+        .iter()
+        .find(|(o, _)| *o == asked.order)
+        .map_or("", |(_, words)| *words)
+        .to_lowercase();
+    let filtered = !asked.words.is_empty();
+    html! {
+        @if shown.is_empty() {
+            p.files-empty {
+                @if filtered { "No file" (where_words) " has “" (asked.words) "” in its name." }
+                @else { "No files" (where_words) "." }
+            }
+        } @else {
+            table.ledger.file-ledger {
+                caption.vh { "Files" (where_words) ", sorted " (by(asked.sort)) ", " (order_words) ". Column heads change the sort." }
+                (head(asked))
+                tbody {
+                    @for each in shown { (row(shell, each, &asked.under, filtered)) }
+                }
+            }
+        }
+    }
+}
+
 async fn list_page(
     shell: &Shell,
     mneme: &Mneme,
@@ -630,26 +716,7 @@ async fn list_page(
     };
     let offset = (asked.at - 1) * PAGE_SIZE;
     let filtered = !asked.words.is_empty();
-    let pages = async { mneme.status().await.map(|status| status.pages) };
-    let (found, pages, files_in_all) = if filtered {
-        let listing = FileListing {
-            under: Some(&asked.under),
-            words: Some(&asked.words),
-            sort: Some(sort),
-            order: Some(order),
-            offset,
-            limit: PAGE_SIZE,
-        };
-        let (found, pages, all) = tokio::try_join!(mneme.files(listing), pages, async {
-            Ok(file_count(mneme).await)
-        })?;
-        (found.map(|found| (found.files, found.total)), pages, all)
-    } else {
-        let (found, pages, all) = tokio::try_join!(all_under(mneme, &asked.under), pages, async {
-            Ok(file_count(mneme).await)
-        })?;
-        (found, pages, all)
-    };
+    let (found, pages, files_in_all) = read(mneme, &asked, offset).await?;
     let Some((files, total)) = found else {
         return Ok(no_files_yet());
     };
@@ -681,38 +748,13 @@ async fn list_page(
     } else {
         format!(" in {}", asked.under)
     };
-    let order_words = orders(sort)
-        .iter()
-        .find(|(o, _)| *o == order)
-        .map_or("", |(_, words)| *words)
-        .to_lowercase();
     let cut = !filtered && total > MOST;
     let body = html! {
         main #(MAIN) .wiki-index.files-index {
-            header.page-head {
-                @if asked.under.is_empty() {
-                    h1 { "Files" }
-                    p.sub {
-                        "Images, PDFs, archives and every other file kept beside the pages. "
-                        (cap_count(files_in_all.unwrap_or(total))) " on the record."
-                    }
-                } @else {
-                    (crumbs(&asked.under, false))
-                    h1 { (kind::name(&asked.under)) }
-                    p.sub { (cap_count(total)) " in this folder and the folders inside it." }
-                }
-                (switch(true, pages, files_in_all.unwrap_or(total)))
-            }
+            (list_head(&asked, total, pages, files_in_all.unwrap_or(total)))
             section.wiki-list.surface data-surface aria-labelledby="list-h" {
                 h2 #list-h .vh { "Files" (where_words) }
-                form.file-find action="/wiki/files" method="get" role="search" aria-label="Filter files by name" {
-                    label.vh for="file-q" { "Filter the files" (where_words) " by name" }
-                    @if !asked.under.is_empty() { input type="hidden" name="under" value=(asked.under); }
-                    input #file-q .num-in name="q" type="search" value=(asked.words) autocomplete="off" spellcheck="false"
-                        placeholder={ "Filter by name" (where_words) };
-                    button.btn type="submit" { "Filter" }
-                    @if filtered { a.seg href=(kind::folder_href(&asked.under)) { "Clear" } }
-                }
+                (filter_form(&asked, &where_words))
                 div.list-bar {
                     p.find-count {
                         @if filtered {
@@ -729,20 +771,7 @@ async fn list_page(
                         }
                     }
                 }
-                @if shown.is_empty() {
-                    p.files-empty {
-                        @if filtered { "No file" (where_words) " has “" (asked.words) "” in its name." }
-                        @else { "No files" (where_words) "." }
-                    }
-                } @else {
-                    table.ledger.file-ledger {
-                        caption.vh { "Files" (where_words) ", sorted " (by(sort)) ", " (order_words) ". Column heads change the sort." }
-                        (head(&asked))
-                        tbody {
-                            @for each in &shown { (row(shell, each, &asked.under, filtered)) }
-                        }
-                    }
-                }
+                (table(shell, &asked, &shown, &where_words))
                 @if cut {
                     p.files-empty { "This list holds the first " (number(MOST)) " files" (where_words) " by name. Filter by name to find the others." }
                 }
