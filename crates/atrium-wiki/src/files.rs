@@ -28,7 +28,7 @@ use crate::mneme::{
     CommitId, EventKind, File, FileDetail, FileEvent, FileListing, FileSort, Mneme, MnemeError,
     Order,
 };
-use crate::routes::{Failure, Params, choice, href, page_number, params, respond};
+use crate::routes::{Failure, Params, choice, href, page_number, params, redirect, respond};
 use crate::{lost, markdown};
 
 /// Rows per page of the list, as the pages list shows them.
@@ -92,9 +92,60 @@ pub async fn raw(
     let method = if head { Method::HEAD } else { Method::GET };
     match mneme.raw(&path, at.as_ref(), method, &headers).await {
         Ok(answer) => relay(answer, head),
-        Err(MnemeError::NotFound) => missing(&shell, &mneme, &path).await,
+        Err(MnemeError::NotFound) => {
+            // A file's bytes as they are now, asked for at a path it has moved away from,
+            // are at the path it moved to. At a commit, the path's own bytes are asked for.
+            if at.is_none()
+                && let Ok(Some(moved)) = moved_to(&mneme, &path).await
+            {
+                return redirect(&kind::raw_href(&moved, None));
+            }
+            missing(&shell, &mneme, &path).await
+        }
         Err(error) => respond(&shell, &mneme, Err(error.into())),
     }
+}
+
+/// Events across all files a move away from a path is looked for among, newest first.
+const MOVES_READ: u64 = 2000;
+
+/// Where the file that was at `path` is now, when it moved away from it: the moves that
+/// took it from there, followed to the newest, among the newest [`MOVES_READ`] file events.
+/// `None` when no move took a file from the path among them, or Mneme lists no files.
+async fn moved_to(mneme: &Mneme, path: &str) -> Result<Option<String>, MnemeError> {
+    let mut events: Vec<FileEvent> = Vec::new();
+    while u64::try_from(events.len()).unwrap_or(u64::MAX) < MOVES_READ {
+        let offset = u64::try_from(events.len()).unwrap_or(0);
+        let Some(read) = mneme.file_changes(offset, STEP, None, None).await? else {
+            return Ok(None);
+        };
+        let done = read.events.is_empty()
+            || offset + u64::try_from(read.events.len()).unwrap_or(0) >= read.total;
+        events.extend(read.events);
+        if done {
+            break;
+        }
+    }
+    Ok(follow(&events, path))
+}
+
+/// Follows the moves in `events`, newest first, from `path` to the last place they took it.
+fn follow(events: &[FileEvent], path: &str) -> Option<String> {
+    let away = |event: &FileEvent, at: &str| {
+        event.kind == EventKind::Renamed && event.from.as_deref() == Some(at)
+    };
+    // The newest move from the path, then each time the oldest move on from where it went
+    // that came after.
+    let mut index = events.iter().position(|event| away(event, path))?;
+    let mut place = events[index].path.clone();
+    while let Some(next) = events[..index]
+        .iter()
+        .rposition(|event| away(event, &place))
+    {
+        index = next;
+        place.clone_from(&events[index].path);
+    }
+    Some(place)
 }
 
 /// Mneme's answer for a file as the browser's: its status, the headers in [`PASSED`], and
@@ -813,6 +864,12 @@ pub async fn show(
         return lost::found_by_path(&shell, &mneme, &format!("files/{path}")).await;
     }
     let shown = file_page(&shell, &mneme, &path, query).await;
+    if matches!(shown, Err(Failure::Mneme(MnemeError::NotFound))) {
+        // A path a file moved away from leads to the file, as a page's old path does.
+        if let Ok(Some(moved)) = moved_to(&mneme, &path).await {
+            return redirect(&kind::page_href(&moved));
+        }
+    }
     respond(&shell, &mneme, shown)
 }
 
@@ -1032,6 +1089,34 @@ mod tests {
             plain.links(None),
             FileLinks::Served { known: None, .. }
         ));
+    }
+
+    fn moved(time: i64, from: &str, to: &str) -> FileEvent {
+        FileEvent {
+            commit: "faf510a1fb457f1af5496ca64dea77ed68ddb2f8".parse().unwrap(),
+            path: to.to_owned(),
+            time,
+            author: "Writer".to_owned(),
+            kind: EventKind::Renamed,
+            from: Some(from.to_owned()),
+            size: 1,
+        }
+    }
+
+    #[test]
+    fn a_files_moves_are_followed_from_an_old_path_to_the_newest() {
+        // Newest first: a.zip went to b.zip, then b.zip to c.zip. A later file at a.zip
+        // went to x.zip, which is the move from a.zip that counts, being the newest.
+        let events = [
+            moved(4, "a.zip", "x.zip"),
+            moved(3, "b.zip", "c.zip"),
+            moved(2, "a.zip", "b.zip"),
+            moved(1, "c.zip", "old.zip"),
+        ];
+        assert_eq!(follow(&events, "a.zip").as_deref(), Some("x.zip"));
+        assert_eq!(follow(&events[1..], "a.zip").as_deref(), Some("c.zip"));
+        assert_eq!(follow(&events, "b.zip").as_deref(), Some("c.zip"));
+        assert_eq!(follow(&events, "elsewhere.zip"), None);
     }
 
     #[test]

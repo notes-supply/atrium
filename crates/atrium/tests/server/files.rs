@@ -328,14 +328,42 @@ async fn a_deleted_files_page_keeps_its_history_and_old_downloads() {
     let bytes = atrium.get(&old[0]).await;
     assert_eq!(bytes.status, 200);
     assert_eq!(bytes.header("content-type"), Some("image/png"));
-    assert_eq!(
-        atrium
-            .get("/wiki/files/brand/guidelines-draft.pdf")
-            .await
-            .status,
-        404,
-        "the path a file moved away from"
+}
+
+#[tokio::test]
+async fn a_path_a_file_moved_away_from_leads_to_where_it_is() {
+    let atrium = Atrium::start(Stub::Demo, &["--viewer", "member"]).await;
+    let changes = atrium.get("/wiki/changes?before=1794178800").await;
+    let created = attrs(&changes.body, "li[data-file] a.ttl", "href");
+    assert!(
+        created.contains(&"/wiki/files/brand/guidelines-draft.pdf".to_owned()),
+        "an older change links the path the file had then: {created:?}"
     );
+    let page = atrium.get("/wiki/files/brand/guidelines-draft.pdf").await;
+    assert_eq!(page.status, 303);
+    assert_eq!(
+        page.header("location"),
+        Some("/wiki/files/brand/print/guidelines.pdf")
+    );
+    let bytes = atrium.get("/wiki/raw/brand/guidelines-draft.pdf").await;
+    assert_eq!(bytes.status, 303);
+    assert_eq!(
+        bytes.header("location"),
+        Some("/wiki/raw/brand/print/guidelines.pdf")
+    );
+    let then = atrium
+        .get(&format!(
+            "/wiki/raw/brand/guidelines-draft.pdf?at={}",
+            "0123456789abcdef0123456789abcdef01234567"
+        ))
+        .await;
+    assert_eq!(
+        then.status, 404,
+        "at a commit, the path's own bytes or none"
+    );
+    let deleted = atrium.get("/wiki/raw/brand/old-mark.png").await;
+    assert_eq!(deleted.status, 404, "a deletion is not a move");
+    assert_eq!(atrium.get("/wiki/files/brand/never.pdf").await.status, 404);
 }
 
 #[tokio::test]

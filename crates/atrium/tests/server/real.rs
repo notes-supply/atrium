@@ -560,6 +560,19 @@ async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
 
     moved_page_version(atrium, logo).await;
 
+    // The kit's first change links the path it had then, which leads to where it is now.
+    let old = atrium.get("/wiki/files/brand/kit.zip").await;
+    assert_eq!(old.status, 303);
+    assert_eq!(
+        old.header("location"),
+        Some("/wiki/files/brand/archive/kit.zip")
+    );
+    let old_bytes = atrium.get("/wiki/raw/brand/kit.zip").await;
+    assert_eq!(
+        old_bytes.header("location"),
+        Some("/wiki/raw/brand/archive/kit.zip")
+    );
+
     let gone = atrium.get("/wiki/raw/notes/todo.txt").await;
     assert_eq!(gone.status, 404);
     assert_eq!(texts(&gone.body, ".gone .ttl-gone"), ["todo.txt"]);
