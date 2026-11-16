@@ -702,3 +702,15 @@ async fn more_files_changed_than_home_reads_are_counted_as_a_lower_bound() {
         "{said}"
     );
 }
+
+#[tokio::test]
+async fn a_first_visit_with_the_files_call_failed_speaks_of_pages_only() {
+    let first = |mneme| async move {
+        let atrium = Atrium::start(mneme, &["--viewer", "member"]).await;
+        texts(&atrium.get("/").await.body, "p.sentence")[0].clone()
+    };
+    let whole = first(Stub::Fixtures).await;
+    assert!(whole.contains("The newest change was"), "{whole}");
+    let failed = first(Stub::FileChangesFailing).await;
+    assert!(failed.contains("The newest page change was"), "{failed}");
+}

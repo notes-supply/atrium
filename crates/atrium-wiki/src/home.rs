@@ -113,6 +113,9 @@ pub fn sentence(local: &Local, facts: &Facts) -> Vec<Markup> {
                 @if let Some(newest) = newest { ", the newest " (local.ago(newest)) }
                 "."
             },
+            // Without the files' changes, what is known is the pages'.
+            (None, (_, None), Some(newest)) => html! { a href="/wiki/changes" { "The newest page change" } " was " (local.ago(newest)) "." },
+            (None, (_, None), None) => html! { "No page has changed yet." },
             (None, _, Some(newest)) => html! { a href="/wiki/changes" { "The newest change" } " was " (local.ago(newest)) "." },
             (None, _, None) => html! { "The wiki has no changes yet." },
         });
@@ -645,6 +648,29 @@ mod tests {
             "No page changed since you were last here at 07:48."
         );
         assert!(said(&facts(3)).starts_with("Three pages changed since"));
+    }
+
+    #[test]
+    fn a_first_visit_with_the_files_unanswered_speaks_of_pages_only() {
+        let first = |newest, files_since| Facts {
+            changes: Some(ChangeFacts {
+                pages_since: 0,
+                files_since,
+                newest,
+            }),
+            ..Facts::default()
+        };
+        assert_eq!(
+            said(&first(Some(NEWEST), None)),
+            "The newest page change was 29 minutes ago."
+        );
+        assert_eq!(said(&first(None, None)), "No page has changed yet.");
+        let known = Some(FilesSince::exactly(0));
+        assert_eq!(
+            said(&first(Some(NEWEST), known)),
+            "The newest change was 29 minutes ago."
+        );
+        assert_eq!(said(&first(None, known)), "The wiki has no changes yet.");
     }
 
     fn file_events(json: &str) -> FileEvents {
