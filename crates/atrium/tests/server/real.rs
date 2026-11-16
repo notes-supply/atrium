@@ -157,6 +157,7 @@ fn write_wiki(work: &Work, now: i64) {
     );
     work.write("brand/kit.zip", &"PK zipped bytes ".repeat(200));
     work.write("notes/todo.txt", "Buy flour.\n");
+    work.write("brand/guide.md", "# Guide\n\n![The logo](logo.svg)\n");
     work.commit("Start the wiki", start);
     work.write(
         "alpha.md",
@@ -170,6 +171,7 @@ fn write_wiki(work: &Work, now: i64) {
         start + 2 * day,
     );
     work.git(&["rm", "-q", "notes/todo.txt"], start + 2 * day);
+    work.git(&["mv", "brand/guide.md", "guide.md"], start + 2 * day);
     work.write(
         "index.md",
         "# Home\n\nStart at [Alpha](greek-alpha.md) or [the deep notes](notes/deep.md).\n",
@@ -305,7 +307,7 @@ async fn atrium_reads_a_wiki_pushed_to_a_real_mneme() {
     say("GET /wiki", texts(&list.body, "tbody tr"));
     let mut titles = texts(&list.body, "tbody a.ttl");
     titles.sort();
-    assert_eq!(titles, ["Alpha", "Deep", "Home"]);
+    assert_eq!(titles, ["Alpha", "Deep", "Guide", "Home"]);
     let alpha = attrs(&list.body, "tbody a.ttl", "href")
         .into_iter()
         .zip(texts(&list.body, "tbody a.ttl"))
@@ -538,6 +540,22 @@ async fn with_files(atrium: &Atrium, say: &impl Fn(&str, Vec<String>)) {
         "PK zipped bytes ".repeat(200)
     );
 
+    // A page moved out of `brand/`: its first version's image is the logo beside it then.
+    let guide = atrium.get("/wiki/guide.md").await;
+    let history = atrium
+        .get(&format!("{}/history", guide.header("location").unwrap()))
+        .await;
+    let first = attrs(&history.body, "tbody a[href*='/at/']", "href")
+        .pop()
+        .unwrap();
+    let commit = first.rsplit('/').next().unwrap().to_owned();
+    let old_guide = atrium.get(&first).await;
+    assert_eq!(
+        attrs(&old_guide.body, "article img", "src"),
+        [format!("{logo}?at={commit}")],
+        "the moved page's old version"
+    );
+
     let gone = atrium.get("/wiki/raw/notes/todo.txt").await;
     assert_eq!(gone.status, 404);
     assert_eq!(texts(&gone.body, ".gone .ttl-gone"), ["todo.txt"]);
@@ -661,7 +679,7 @@ async fn atrium_reads_a_wiki_folder_through_a_real_mneme_serve_folder() {
         &env,
     );
     let base = format!("http://{}", atrium.listening());
-    assert_eq!(titles(&base).await, ["Alpha", "Deep", "Home"]);
+    assert_eq!(titles(&base).await, ["Alpha", "Deep", "Guide", "Home"]);
     let search = reqwest::get(format!("{base}/wiki/search?q=harbour*"))
         .await
         .unwrap()

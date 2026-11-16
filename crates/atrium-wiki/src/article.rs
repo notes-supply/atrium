@@ -262,10 +262,13 @@ async fn old(shell: &Shell, mneme: &Mneme, id: &str, commit: &str) -> Result<Pag
     };
     let older = index.and_then(|i| step(i + 1));
     let newer = index.and_then(|i| i.checked_sub(1)).and_then(step);
-    let files = PageFiles::of(mneme, &version.markdown, &page.path).await;
+    // The text's relative links and images resolve from where the page was then, which a
+    // move since may have changed.
+    let path = event.map_or(page.path.as_str(), |event| event.path.as_str());
+    let files = PageFiles::of(mneme, &version.markdown, path).await;
     let rendered = markdown::render(
         &version.markdown,
-        &page.path,
+        path,
         files.links(Some(version.commit.as_str())),
     );
     let changed_since = href_diff(&href, &version.commit);
