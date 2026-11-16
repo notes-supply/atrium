@@ -183,6 +183,7 @@ fn relay(answer: reqwest::Response, head: bool) -> Response {
     let mut response = Response::new(body);
     *response.status_mut() = status;
     *response.headers_mut() = headers;
+    response.extensions_mut().insert(atrium_core::FileBytes);
     response
 }
 

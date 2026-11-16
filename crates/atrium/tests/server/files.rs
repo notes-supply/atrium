@@ -105,13 +105,32 @@ async fn ranges_tags_and_head_pass_through() {
     assert_eq!(changed.status, 200, "the file changed, so all of it");
     assert_eq!(changed.body, whole.body);
 
-    let kept = atrium.get_with(LOGO, &[("if-none-match", &tag)]).await;
+    // A visit cookie, kept by a page, which a file's answer must leave as it is.
+    let now = jiff::Timestamp::now().as_second();
+    let visit = format!("atrium-visit=1788230000.{}", now - 60);
+    let kept = atrium
+        .get_with(LOGO, &[("if-none-match", &tag), ("cookie", &visit)])
+        .await;
     assert_eq!(kept.status, 304);
+    assert_eq!(kept.header("set-cookie"), None, "a 304 is no visit");
     assert_eq!(kept.header("etag"), Some(tag.as_str()));
     assert_eq!(kept.body, "");
 
-    let none = atrium.get_with(LOGO, &[("range", "bytes=100-")]).await;
+    let none = atrium
+        .get_with(LOGO, &[("range", "bytes=100-"), ("cookie", &visit)])
+        .await;
     assert_eq!(none.status, 416);
+    assert_eq!(none.header("set-cookie"), None, "a 416 is no visit");
+    let missing = atrium
+        .get_with("/wiki/raw/nothing.png", &[("cookie", &visit)])
+        .await;
+    assert_eq!(missing.status, 404);
+    assert!(
+        missing
+            .header("set-cookie")
+            .is_some_and(|cookie| cookie.starts_with("atrium-visit=")),
+        "Atrium's not-found page is a page of the visit"
+    );
     assert_eq!(none.header("content-range"), Some("bytes */62"));
     assert_eq!(none.body, "", "Mneme's reason is not relayed");
 
