@@ -127,6 +127,10 @@ pub struct Params {
     pub only: Option<String>,
     /// The folder a list of files shows.
     pub under: Option<String>,
+    /// How many changes to pages, and to files, at the newest second before `before` a page
+    /// of changes already showed.
+    pub pages: Option<String>,
+    pub files: Option<String>,
 }
 
 pub fn params(query: Result<Query<Params>, QueryRejection>) -> Result<Params, Failure> {

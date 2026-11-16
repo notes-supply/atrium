@@ -32,7 +32,9 @@ pub async fn show(
 }
 
 /// Events grouped by the reader's day, the first `DAYS` days. When the read was cut short,
-/// the last day may be missing some of its events, so it is left for the next page.
+/// the last day may be missing some of its events, so it is left for the next page, unless
+/// it is the only one: then the page shows what it has of it, and the next goes on from
+/// there.
 fn days<'a, 'e>(shell: &Shell, events: &'a [Change<'e>], full: bool) -> Vec<&'a [Change<'e>]> {
     let local = shell.local();
     let mut days: Vec<&[Change<'e>]> = events
@@ -88,15 +90,23 @@ fn side(days: &[&[Change<'_>]], shown: &[&Change<'_>]) -> Markup {
     }
 }
 
-/// The events from `before` back, when the address says where the older days start and
-/// Mneme pages by time, and whether it did; otherwise from `offset`.
-async fn older(
-    mneme: &Mneme,
-    offset: u64,
+/// Where a page of changes starts: the newest first, or from a time back, past the changes
+/// at the newest second of it that the page before showed. Several changes can share one
+/// time, and one read can end among them, so a time alone would lose or repeat some.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Cursor {
+    /// Only changes older than this time.
     before: Option<i64>,
-) -> Result<(Events, bool), MnemeError> {
-    if let Some(before) = before
-        && let Some(found) = mneme.changes_before(before, READ).await?
+    /// Changes to pages, and to files, already shown at the newest second before `before`.
+    pages: u64,
+    files: u64,
+}
+
+/// The events from the cursor back, when the address names one and Mneme pages by time, and
+/// whether it did; otherwise from `offset`.
+async fn older(mneme: &Mneme, offset: u64, at: Cursor) -> Result<(Events, bool), MnemeError> {
+    if let Some(before) = at.before
+        && let Some(found) = mneme.changes_before(before, at.pages, READ).await?
     {
         return Ok((found, true));
     }
@@ -123,48 +133,60 @@ fn whole<'a>(pages: &'a [Event], files: &'a [FileEvent]) -> (Vec<Change<'a>>, bo
     (all, pages_full || files_full)
 }
 
-/// The link to the days before those shown, when there are any: from the start of the
-/// oldest day shown, and past the pages' events shown for a Mneme that pages by offset.
+/// How many of `shown` are changes to pages, and to files, by `keep`.
+fn tally(shown: &[&Change<'_>], keep: impl Fn(&Change<'_>) -> bool) -> (u64, u64) {
+    shown
+        .iter()
+        .filter(|change| keep(change))
+        .fold((0, 0), |(pages, files), change| match change {
+            Change::Page(_) => (pages + 1, files),
+            Change::File(_) => (pages, files + 1),
+        })
+}
+
+/// The link to the changes before those shown, when there are any. It goes on from the
+/// oldest change shown, whatever its day: the second it is in, past the changes of that
+/// second already shown, so that a day busier than one read goes on on the next page and
+/// nothing is lost or shown twice. `offset` counts the pages' changes shown, for a Mneme
+/// that pages by offset alone.
 fn older_link(
-    shell: &Shell,
     shown: &[&Change<'_>],
     pages: &Events,
     files: Option<&FileEvents>,
     offset: u64,
+    at: Cursor,
     by_time: bool,
 ) -> Option<String> {
-    let shown_pages = u64::try_from(
-        shown
-            .iter()
-            .filter(|change| matches!(change, Change::Page(_)))
-            .count(),
-    )
-    .unwrap_or(0);
-    let shown_files = u64::try_from(shown.len()).unwrap_or(0) - shown_pages;
-    let skipped = if by_time { 0 } else { offset };
-    // The older days start before the oldest day shown, which is whole: `days` leaves out a
-    // day the read may have cut.
-    let oldest_day = shown.last().and_then(|change| {
-        shell
-            .local()
-            .at(change.time())
-            .start_of_day()
-            .ok()
-            .map(|start| start.timestamp().as_second())
-    });
-    let more_files = files.is_some_and(|files| shown_files < files.total);
-    (skipped + shown_pages < pages.total || more_files).then(|| {
-        href(
-            "/wiki/changes",
-            &[
-                (
-                    "before",
-                    &oldest_day.map_or_else(String::new, |at| at.to_string()),
-                ),
-                ("offset", &(offset + shown_pages).to_string()),
-            ],
-        )
-    })
+    let (shown_pages, shown_files) = tally(shown, |_| true);
+    let (skipped_pages, skipped_files) = if by_time {
+        (at.pages, at.files)
+    } else {
+        (offset, at.files)
+    };
+    let more_pages = skipped_pages + shown_pages < pages.total;
+    let more_files = files.is_some_and(|files| skipped_files + shown_files < files.total);
+    if !(more_pages || more_files) {
+        return None;
+    }
+    let oldest = shown.last().map(|change| change.time())?;
+    let (same_pages, same_files) = tally(shown, |change| change.time() == oldest);
+    // The changes at the oldest second that a page before this one showed are still to be
+    // skipped when this page showed nothing older.
+    let (same_pages, same_files) = if at.before == Some(oldest + 1) {
+        (same_pages + at.pages, same_files + at.files)
+    } else {
+        (same_pages, same_files)
+    };
+    let count = |n: u64| if n == 0 { String::new() } else { n.to_string() };
+    Some(href(
+        "/wiki/changes",
+        &[
+            ("before", &(oldest + 1).to_string()),
+            ("pages", &count(same_pages)),
+            ("files", &count(same_files)),
+            ("offset", &(offset + shown_pages).to_string()),
+        ],
+    ))
 }
 
 async fn changes(
@@ -174,12 +196,16 @@ async fn changes(
 ) -> Result<Page, Failure> {
     let asked = params(query)?;
     let offset: u64 = choice(asked.offset.as_deref())?.unwrap_or(0);
-    let before: Option<i64> = choice(asked.before.as_deref())?;
+    let at = Cursor {
+        before: choice(asked.before.as_deref())?,
+        pages: choice(asked.pages.as_deref())?.unwrap_or(0),
+        files: choice(asked.files.as_deref())?.unwrap_or(0),
+    };
     let ((found, by_time), titles, _, files) = tokio::try_join!(
-        older(mneme, offset, before),
+        older(mneme, offset, at),
         titles(mneme),
         mneme.status(),
-        mneme.file_changes(0, READ, None, before),
+        mneme.file_changes(at.files, READ, None, at.before),
     )?;
     let file_events = files.as_ref().map_or(&[][..], |files| &files.events[..]);
     let (all, full) = whole(&found.events, file_events);
@@ -190,7 +216,7 @@ async fn changes(
     let last = shell.visit().last;
     let is_new = |change: &Change<'_>| last.is_some_and(|last| change.time() > last);
     let new = shown.iter().filter(|change| is_new(change)).count();
-    let older = older_link(shell, &shown, &found, files.as_ref(), offset, by_time);
+    let older = older_link(&shown, &found, files.as_ref(), offset, at, by_time);
     let newer = (offset > 0).then(|| "/wiki/changes".to_owned());
     let look = RowLook {
         day: false,

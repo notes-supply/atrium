@@ -628,3 +628,40 @@ async fn the_record_is_called_what_its_setting_names_it_and_only_as_text() {
     let home = atrium.get("/").await.body;
     assert_eq!(texts(&home, "#dock-laurel .dk-name"), [named], "home's map");
 }
+
+#[tokio::test]
+async fn a_day_busier_than_one_read_goes_on_on_the_next_page_and_loses_nothing() {
+    use atrium_wiki::stub::{BUSY_EARLIER, BUSY_FILES, BUSY_PAGES};
+    // More changes on one morning than one read holds, over a thousand of them in one second.
+    let atrium = Atrium::start(Stub::Busy, &["--viewer", "member"]).await;
+    let mut seen: Vec<String> = Vec::new();
+    let mut next = Some("/wiki/changes".to_owned());
+    let mut pages = 0;
+    let mut links = Vec::new();
+    while let Some(path) = next {
+        pages += 1;
+        links.push(path.clone());
+        assert!(pages < 20, "the pages never end");
+        let reply = atrium.get(&path).await;
+        assert_eq!(reply.status, 200, "{path}");
+        seen.extend(texts(&reply.body, ".days li .ttl"));
+        next = attrs(&reply.body, ".pager a[rel=next]", "href").pop();
+    }
+    let mut expected: Vec<String> = (0..BUSY_PAGES + BUSY_EARLIER)
+        .map(|i| format!("page-{i:04}"))
+        .chain((0..BUSY_FILES + BUSY_EARLIER).map(|i| format!("file-{i:04}.bin")))
+        .collect();
+    expected.sort();
+    let shown = seen.len();
+    seen.sort();
+    assert_eq!(seen, expected, "every change once");
+    assert_eq!(shown, expected.len());
+    assert!(
+        pages > 1,
+        "the busy morning took more than one page: {pages}"
+    );
+    assert!(
+        links.iter().any(|link| link.contains("files=1000")),
+        "a second that two pages could not hold goes on on a third: {links:?}"
+    );
+}

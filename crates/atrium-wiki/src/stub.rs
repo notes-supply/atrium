@@ -31,6 +31,111 @@ pub enum Stub {
     /// Answers as a Mneme from before files did: every route of the examples but the
     /// files', which answer 404 as an unknown route.
     Older,
+    /// Answers with a morning busier than one read of changes, [`BUSY_PAGES`] changes to
+    /// pages and [`BUSY_FILES`] to files, several to the second and [`BUSY_BURST`] files in
+    /// one second, more than two reads hold, and a few of each the day before.
+    Busy,
+}
+
+/// Changes to pages in [`Stub::Busy`]'s busy morning, three to the second.
+pub const BUSY_PAGES: usize = 600;
+/// Changes to files in [`Stub::Busy`]'s busy morning: the newest [`BUSY_BURST`] in its
+/// newest second, as one commit of a whole folder makes, then two to the second.
+pub const BUSY_FILES: usize = 1200;
+/// Changes to files in the busy morning's newest second.
+pub const BUSY_BURST: usize = 1100;
+/// Changes of each kind the day before.
+pub const BUSY_EARLIER: usize = 5;
+/// The newest change of the busy morning: 11 November 2026 at 09:30 in Stockholm.
+const BUSY_NEWEST: i64 = 1_794_385_800;
+
+/// The time of each busy change, newest first: the morning's, the first `burst` of them in
+/// one second and the rest `per_second` to a second, then the day before's.
+fn busy_times(
+    morning: usize,
+    burst: usize,
+    per_second: usize,
+) -> impl Iterator<Item = (usize, i64)> {
+    let per_second = i64::try_from(per_second).unwrap_or(1);
+    let at = |i: usize| i64::try_from(i).unwrap_or(0);
+    (0..morning)
+        .map(move |i| (i, BUSY_NEWEST - at(i.saturating_sub(burst)) / per_second))
+        .chain((0..BUSY_EARLIER).map(move |i| (morning + i, BUSY_NEWEST - 86_400 - at(i) * 60)))
+}
+
+/// Which part of a busy listing to answer, as Mneme reads it.
+#[derive(Deserialize)]
+struct Window {
+    #[serde(default)]
+    offset: usize,
+    #[serde(default = "fifty")]
+    limit: usize,
+    since: Option<i64>,
+    before: Option<i64>,
+}
+
+/// The events at the times `times` gives, as `event` writes each, in the window asked for.
+fn busy(
+    window: &Window,
+    times: impl Iterator<Item = (usize, i64)>,
+    event: impl Fn(usize, i64) -> Value,
+) -> Response {
+    let kept: Vec<Value> = times
+        .filter(|(_, time)| window.since.is_none_or(|since| *time >= since))
+        .filter(|(_, time)| window.before.is_none_or(|before| *time < before))
+        .map(|(i, time)| event(i, time))
+        .collect();
+    let total = kept.len();
+    let events: Vec<Value> = kept
+        .into_iter()
+        .skip(window.offset)
+        .take(window.limit.min(500))
+        .collect();
+    json(serde_json::json!({ "total": total, "events": events }).to_string())
+}
+
+async fn busy_changes(Query(window): Query<Window>) -> Response {
+    busy(&window, busy_times(BUSY_PAGES, 0, 3), |i, time| {
+        serde_json::json!({
+            "commit": format!("{i:040x}"),
+            "page": format!("{i:016x}"),
+            "path": format!("busy/page-{i:04}.md"),
+            "time": time,
+            "author": "Writer",
+            "kind": "edited",
+            "version": true,
+            "words": 10,
+            "added": 1,
+            "removed": 0,
+        })
+    })
+}
+
+async fn busy_file_changes(Query(window): Query<Window>) -> Response {
+    busy(&window, busy_times(BUSY_FILES, BUSY_BURST, 2), |i, time| {
+        serde_json::json!({
+            "commit": format!("{:040x}", i + 10_000),
+            "path": format!("busy/file-{i:04}.bin"),
+            "time": time,
+            "author": "Writer",
+            "kind": "edited",
+            "size": 10,
+        })
+    })
+}
+
+fn busy_routes() -> Router {
+    Router::new()
+        .route("/v1/changes", get(busy_changes))
+        .route("/v1/changes/files", get(busy_file_changes))
+        .route(
+            "/v1/pages",
+            get(|| async { json(r#"{"total":0,"pages":[]}"#.to_owned()) }),
+        )
+        .route(
+            "/v1/status",
+            get(|| async { json(include_str!("../fixtures/status.json").to_owned()) }),
+        )
 }
 
 /// A running stand-in.
@@ -338,6 +443,7 @@ pub async fn serve(stub: Stub) -> Running {
             }))
         }
         Stub::Failing => Router::new().fallback(|| async { StatusCode::INTERNAL_SERVER_ERROR }),
+        Stub::Busy => busy_routes(),
         Stub::Older => older().fallback(|| async {
             let body = r#"{"error":"no such route"}"#.to_owned();
             (StatusCode::NOT_FOUND, json(body)).into_response()

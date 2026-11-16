@@ -884,9 +884,9 @@ impl Mneme {
         self.get("changes", &paged(offset, limit, since)).await
     }
 
-    /// Events across all pages older than `before`, newest first, or `None` from a Mneme
-    /// that does not page by time yet, which leaves the parameter out and answers from the
-    /// newest.
+    /// Events across all pages older than `before`, newest first, past the first `offset`
+    /// of them, or `None` from a Mneme that does not page by time yet, which leaves the
+    /// parameter out and answers from the newest.
     ///
     /// # Errors
     ///
@@ -894,9 +894,10 @@ impl Mneme {
     pub async fn changes_before(
         &self,
         before: i64,
+        offset: u64,
         limit: u64,
     ) -> Result<Option<Events>, MnemeError> {
-        let mut query = paged(0, limit, None);
+        let mut query = paged(offset, limit, None);
         query.push(("before", before.to_string()));
         let events: Events = self.get("changes", &query).await?;
         Ok(events
