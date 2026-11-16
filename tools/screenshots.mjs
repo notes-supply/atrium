@@ -1,6 +1,7 @@
 // The screenshots in the README and docs/screenshots.md, of `atrium --demo` in the browser
 // tests' Chromium with the field in WebGL through SwiftShader, at 1440 by 900, into
-// docs/images: home in day and night, a page, a diff and the machines. Reduced motion skips
+// docs/images: home in day and night, a page, a diff, the machines, a folder of files, a file's
+// page and a page with an image and links to files. Reduced motion skips
 // the entrance and holds the field on its still frame, which draws everything a surface asks
 // of it at once, so every run draws the same pictures. The browser's clock is the demo's,
 // 09:41 in Stockholm. Run through tools/browser.sh (mise run screenshots), which sets
@@ -23,6 +24,9 @@ const SHOTS = [
   { file: 'page.png', route: 'page', theme: 'light' },
   { file: 'diff.png', route: 'diff', theme: 'dark' },
   { file: 'machines.png', route: 'machines', theme: 'light' },
+  { file: 'files.png', route: 'folder', theme: 'light' },
+  { file: 'file.png', route: 'file', theme: 'dark' },
+  { file: 'brand.png', route: 'brand', theme: 'light' },
 ];
 
 const browser = await chromium.launch({ args: GL });

@@ -47,7 +47,7 @@ mise run gate
 
 The gate builds the Wasm bundles and holds them to their size budgets, checks formatting, runs clippy natively and for Wasm with warnings denied, runs the tests with nextest against a stand-in that serves Mneme's example responses, checks the RustSec advisories and lints the workflows. Set `MISE_OFFLINE=1` to check the advisories against the local copy of the database.
 
-`mise run test:mneme` runs one more test against a real `mneme serve`, with a wiki pushed by `git`. Set `ATRIUM_MNEME_BIN` to a `mneme` binary.
+`mise run test:mneme` runs one more test against a real `mneme serve`, with a wiki pushed by `git`. Set `ATRIUM_MNEME_BIN` to a `mneme` binary. The test asks Mneme for its files first: a Mneme that lists them is walked through its files, and one that does not, such as the v0.1.1 release, is checked to leave the wiki as it was. Run it with both.
 
 `mise run test:browser` drives every browser module, every route at 1440 and 390 px in day and night, and axe with scripts on and off, in Chromium against `atrium --demo`. `mise run axe` runs only axe. CI runs the browser tests in a job of their own, and `gate` passes only when both jobs did.
 
@@ -55,7 +55,7 @@ The gate builds the Wasm bundles and holds them to their size budgets, checks fo
 
 `mise run capture` records a short visit to the demo and screenshots home, a page and the machines at both widths in day and night, into `target/check/final`.
 
-`mise run screenshots` makes the screenshots in `docs/images` again: home in day and night, a page, a diff and the machines, at 1440 by 900. Reduced motion holds the field on its still frame, so a run draws the same pictures as the last.
+`mise run screenshots` makes the screenshots in `docs/images` again: home in day and night, a page, a diff, the machines, the files, a file's page and the page that shows the brand's logo, at 1440 by 900. Reduced motion holds the field on its still frame, so a run draws the same pictures as the last.
 
 These run in Playwright's image through `tools/browser.sh`, which needs Docker and three free ports from `PORT` (18760 by default), and installs Playwright 1.64.1 and axe from `package-lock.json` with `npm ci` in the image.
 
