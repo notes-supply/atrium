@@ -18,7 +18,7 @@ Atrium is a shared homepage and dashboard for a team. Its first feature is the w
 - **Every change, by whom:** recent changes by day, each page's history, and diffs by paragraph or by line.
 - **Edits that overlapped,** when two machines changed the same lines, marked and linked to both sides.
 - **What is stuck:** a map of the machines that write to the wiki, and which are blocked, behind or leaving files out.
-- **Files beside the pages:** images and PDFs shown in place, every version of a brand kit's zip, a Files list by folder, all read-only from the wiki's folder.
+- **Files beside the pages:** images shown in the pages, every version of each file to download, and a Files list by folder, read from the wiki's folder.
 - **Find anything fast:** search as you type, a command palette, keys for every section, and link previews.
 - **Light to run:** pages work without scripts, from one static binary on a laptop or a 13 MB image on a server.
 

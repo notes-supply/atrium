@@ -310,7 +310,7 @@ struct Asked {
 }
 
 impl Asked {
-    /// The list's address for `under`, keeping the rest unless `set` changes it.
+    /// The list's address for the folder `under`, sorted and at page `at`, keeping the filter.
     fn href(&self, under: &str, sort: FileSort, order: Order, at: u64) -> String {
         let page = if at > 1 {
             at.to_string()
